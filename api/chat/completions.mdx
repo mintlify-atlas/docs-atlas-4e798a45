@@ -1,0 +1,274 @@
+---
+title: 'Chat Completions'
+description: 'Create chat completion responses with streaming support'
+api: 'POST /v1/chat/completions'
+---
+
+## Overview
+
+Generates a model response for the given conversation and configuration. Supports OpenAI-compatible parameters and provider-specific extensions.
+
+## Method Signature
+
+```go
+func (r *ChatCompletionService) New(
+    ctx context.Context,
+    body ChatCompletionNewParams,
+    opts ...option.RequestOption,
+) (*ChatCompletion, error)
+```
+
+## Streaming Method
+
+```go
+func (r *ChatCompletionService) NewStreaming(
+    ctx context.Context,
+    body ChatCompletionNewParams,
+    opts ...option.RequestOption,
+) *ssestream.Stream[ChatCompletionChunk]
+```
+
+## Request Parameters
+
+<ParamField path="messages" type="[]ChatCompletionMessageParam" required>
+  Array of messages in the conversation. Each message has a `role` (system, user, assistant, developer, function, tool) and `content`.
+</ParamField>
+
+<ParamField path="model" type="string" required>
+  ID of the model to use. Format: `provider/model-name` (e.g., `openai/gpt-4`, `anthropic/claude-3-5-sonnet-20241022`)
+</ParamField>
+
+<ParamField path="stream" type="bool" default="false">
+  Whether to stream responses using Server-Sent Events (SSE)
+</ParamField>
+
+<ParamField path="temperature" type="float64" default="1.0">
+  Sampling temperature between 0 and 2. Higher values make output more random.
+</ParamField>
+
+<ParamField path="max_tokens" type="int64">
+  Maximum number of tokens to generate in the completion
+</ParamField>
+
+<ParamField path="top_p" type="float64" default="1.0">
+  Nucleus sampling parameter. Alternative to temperature.
+</ParamField>
+
+<ParamField path="n" type="int64" default="1">
+  Number of chat completion choices to generate
+</ParamField>
+
+<ParamField path="stop" type="[]string">
+  Up to 4 sequences where the API will stop generating tokens
+</ParamField>
+
+<ParamField path="presence_penalty" type="float64" default="0">
+  Penalty for new tokens based on whether they appear in the text so far (-2.0 to 2.0)
+</ParamField>
+
+<ParamField path="frequency_penalty" type="float64" default="0">
+  Penalty for new tokens based on their frequency in the text so far (-2.0 to 2.0)
+</ParamField>
+
+<ParamField path="tools" type="[]ChatCompletionToolParam">
+  List of tools the model may call. Use this for function calling.
+</ParamField>
+
+<ParamField path="tool_choice" type="ToolChoiceUnionParam">
+  Controls which (if any) tool is called. Options: `auto`, `none`, `any`, or specific tool.
+</ParamField>
+
+<ParamField path="response_format" type="ResponseFormatParam">
+  Format for the model's output. Supports `text`, `json_object`, or `json_schema`.
+</ParamField>
+
+<ParamField path="user" type="string">
+  Unique identifier for the end-user for abuse monitoring
+</ParamField>
+
+## Response Fields
+
+<ResponseField name="id" type="string" required>
+  Unique identifier for the chat completion
+</ResponseField>
+
+<ResponseField name="object" type="string" required>
+  Object type, always `chat.completion`
+</ResponseField>
+
+<ResponseField name="created" type="int64" required>
+  Unix timestamp (in seconds) when the completion was created
+</ResponseField>
+
+<ResponseField name="model" type="string" required>
+  The model used for the completion
+</ResponseField>
+
+<ResponseField name="choices" type="[]Choice" required>
+  Array of chat completion choices
+  <Expandable title="Choice fields">
+    <ResponseField name="index" type="int64">
+      Index of the choice
+    </ResponseField>
+    <ResponseField name="message" type="ChatCompletionMessage">
+      The generated message
+    </ResponseField>
+    <ResponseField name="finish_reason" type="string">
+      Reason the model stopped: `stop`, `length`, `tool_calls`, `content_filter`, or `function_call`
+    </ResponseField>
+    <ResponseField name="logprobs" type="ChoiceLogprobs">
+      Log probability information for the choice
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="usage" type="CompletionUsage">
+  Token usage statistics
+  <Expandable title="Usage fields">
+    <ResponseField name="prompt_tokens" type="int64">
+      Number of tokens in the prompt
+    </ResponseField>
+    <ResponseField name="completion_tokens" type="int64">
+      Number of tokens in the completion
+    </ResponseField>
+    <ResponseField name="total_tokens" type="int64">
+      Total tokens used (prompt + completion)
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="tools_executed" type="[]string">
+  List of tool names executed server-side (MCP tools)
+</ResponseField>
+
+<ResponseField name="mcp_server_errors" type="map[string]interface{}">
+  Information about MCP server failures, if any occurred
+</ResponseField>
+
+<ResponseField name="system_fingerprint" type="string">
+  Backend configuration fingerprint for determinism tracking
+</ResponseField>
+
+## Code Examples
+
+### Basic Chat Completion
+
+```go
+package main
+
+import (
+    "context"
+    "fmt"
+    "log"
+
+    dedalus "github.com/dedalus-labs/dedalus-sdk-go"
+    "github.com/dedalus-labs/dedalus-sdk-go/option"
+)
+
+func main() {
+    client := dedalus.NewClient(
+        option.WithAPIKey("your-api-key"),
+    )
+
+    ctx := context.Background()
+    
+    completion, err := client.Chat.Completions.New(ctx, dedalus.ChatCompletionNewParams{
+        Model: dedalus.F("openai/gpt-4"),
+        Messages: dedalus.F([]dedalus.ChatCompletionMessageParamUnion{
+            dedalus.ChatCompletionUserMessageParam{
+                Role:    dedalus.F(dedalus.ChatCompletionUserMessageParamRoleUser),
+                Content: dedalus.F(dedalus.ChatCompletionUserMessageParamContentUnion(
+                    dedalus.String("What is the capital of France?"),
+                )),
+            },
+        }),
+    })
+
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    fmt.Println(completion.Choices[0].Message.Content)
+}
+```
+
+### Streaming Chat Completion
+
+```go
+stream := client.Chat.Completions.NewStreaming(ctx, dedalus.ChatCompletionNewParams{
+    Model: dedalus.F("openai/gpt-4"),
+    Messages: dedalus.F([]dedalus.ChatCompletionMessageParamUnion{
+        dedalus.ChatCompletionUserMessageParam{
+            Role:    dedalus.F(dedalus.ChatCompletionUserMessageParamRoleUser),
+            Content: dedalus.F(dedalus.ChatCompletionUserMessageParamContentUnion(
+                dedalus.String("Tell me a story"),
+            )),
+        },
+    }),
+})
+
+for stream.Next() {
+    chunk := stream.Current()
+    if len(chunk.Choices) > 0 {
+        fmt.Print(chunk.Choices[0].Delta.Content)
+    }
+}
+
+if err := stream.Err(); err != nil {
+    log.Fatal(err)
+}
+```
+
+### Function Calling
+
+```go
+completion, err := client.Chat.Completions.New(ctx, dedalus.ChatCompletionNewParams{
+    Model: dedalus.F("openai/gpt-4"),
+    Messages: dedalus.F([]dedalus.ChatCompletionMessageParamUnion{
+        dedalus.ChatCompletionUserMessageParam{
+            Role:    dedalus.F(dedalus.ChatCompletionUserMessageParamRoleUser),
+            Content: dedalus.F(dedalus.ChatCompletionUserMessageParamContentUnion(
+                dedalus.String("What's the weather in San Francisco?"),
+            )),
+        },
+    }),
+    Tools: dedalus.F([]dedalus.ChatCompletionToolParam{
+        {
+            Type: dedalus.F(dedalus.ChatCompletionToolParamTypeFunction),
+            Function: dedalus.F(shared.FunctionDefinitionParam{
+                Name:        dedalus.F("get_weather"),
+                Description: dedalus.F("Get the current weather in a location"),
+                Parameters: dedalus.F(shared.FunctionParameters{
+                    "type": "object",
+                    "properties": map[string]interface{}{
+                        "location": map[string]interface{}{
+                            "type": "string",
+                            "description": "The city name",
+                        },
+                    },
+                    "required": []string{"location"},
+                }),
+            }),
+        },
+    }),
+})
+```
+
+## Message Types
+
+The SDK supports multiple message types:
+
+- **System Message**: Instructions for the model
+- **User Message**: User input (supports text, images, audio, files)
+- **Assistant Message**: Model responses
+- **Tool Message**: Tool execution results
+- **Function Message**: Function call results (deprecated)
+- **Developer Message**: Developer instructions (replaces system for o1 models)
+
+## Error Responses
+
+- **400 Bad Request**: Validation error in request parameters
+- **401 Unauthorized**: Invalid or missing API key
+- **402 Payment Required**: Insufficient balance or quota
+- **429 Too Many Requests**: Rate limit exceeded
+- **500 Internal Server Error**: Unexpected server failure

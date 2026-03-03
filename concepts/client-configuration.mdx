@@ -1,0 +1,234 @@
+---
+title: Client Configuration
+description: Learn how to configure the Dedalus Go SDK client with API keys, environments, and request options
+---
+
+## Overview
+
+The Dedalus Go SDK provides flexible configuration options to customize client behavior. You can configure API credentials, environment settings, retry behavior, timeouts, and more.
+
+## Creating a Client
+
+<Steps>
+  <Step title="Import the SDK">
+    ```go
+    import (
+        "github.com/dedalus-labs/dedalus-sdk-go"
+        "github.com/dedalus-labs/dedalus-sdk-go/option"
+    )
+    ```
+  </Step>
+
+  <Step title="Initialize with options">
+    ```go
+    client := githubcomdedaluslabsdedalussdkgo.NewClient(
+        option.WithAPIKey("My API Key"),     // defaults to os.LookupEnv("DEDALUS_API_KEY")
+        option.WithEnvironmentDevelopment(), // defaults to option.WithEnvironmentProduction()
+    )
+    ```
+  </Step>
+</Steps>
+
+## Environment Variables
+
+The SDK automatically reads configuration from environment variables. This is handled by the `DefaultClientOptions()` function:
+
+| Environment Variable | Description | Option Equivalent |
+|---------------------|-------------|-------------------|
+| `DEDALUS_API_KEY` | Primary API authentication key | `option.WithAPIKey()` |
+| `DEDALUS_X_API_KEY` | Secondary API key | `option.WithXAPIKey()` |
+| `DEDALUS_BASE_URL` | Custom base URL for API requests | `option.WithBaseURL()` |
+| `DEDALUS_PROVIDER_KEY` | Provider-specific authentication | `option.WithProviderKey()` |
+| `DEDALUS_AS_URL` | Alternative service URL | `option.WithAsBaseURL()` |
+| `DEDALUS_ORG_ID` | Organization identifier | `option.WithDedalusOrgID()` |
+| `DEDALUS_PROVIDER` | Provider name | `option.WithProvider()` |
+| `DEDALUS_PROVIDER_MODEL` | Provider model identifier | `option.WithProviderModel()` |
+
+<Info>
+Options passed to `NewClient()` override environment variable defaults.
+</Info>
+
+## Request Options
+
+The SDK uses the functional options pattern. Options can be applied at the client level (affecting all requests) or per-request.
+
+### Client-Level Options
+
+```go
+client := githubcomdedaluslabsdedalussdkgo.NewClient(
+    option.WithAPIKey("my-api-key"),
+    option.WithHeader("X-Custom-Header", "custom_value"),
+    option.WithMaxRetries(5),
+)
+```
+
+### Request-Level Options
+
+Request-level options override client-level settings:
+
+```go
+chatCompletion, err := client.Chat.Completions.New(
+    context.TODO(),
+    params,
+    // Override client settings for this request
+    option.WithHeader("X-Custom-Header", "different_value"),
+    option.WithMaxRetries(0), // Disable retries for this request
+)
+```
+
+## Common Configuration Options
+
+### Timeouts
+
+<Warning>
+Requests do not time out by default. Always use context for timeout control.
+</Warning>
+
+```go
+// Set timeout for entire request lifecycle (including retries)
+ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+defer cancel()
+
+client.Chat.Completions.New(
+    ctx,
+    params,
+    // Set per-retry timeout
+    option.WithRequestTimeout(20*time.Second),
+)
+```
+
+### Retries
+
+The SDK automatically retries certain errors with exponential backoff:
+
+- Connection errors
+- 408 Request Timeout
+- 409 Conflict
+- 429 Rate Limit
+- 500+ Internal errors
+
+```go
+// Configure default retry behavior
+client := githubcomdedaluslabsdedalussdkgo.NewClient(
+    option.WithMaxRetries(0), // default is 2
+)
+
+// Override per-request
+client.Chat.Completions.New(
+    context.TODO(),
+    params,
+    option.WithMaxRetries(5),
+)
+```
+
+### Custom Headers
+
+```go
+client := githubcomdedaluslabsdedalussdkgo.NewClient(
+    option.WithHeader("X-Some-Header", "custom_header_info"),
+)
+```
+
+### Undocumented Parameters
+
+Use `WithJSONSet()` or `WithQuerySet()` to add undocumented request parameters:
+
+```go
+client.Chat.Completions.New(
+    context.TODO(),
+    params,
+    // Add undocumented field to request body using sjson syntax
+    option.WithJSONSet("some.json.path", map[string]string{"my": "object"}),
+)
+```
+
+## Middleware
+
+Custom middleware can be applied to intercept and modify requests:
+
+```go
+func Logger(req *http.Request, next option.MiddlewareNext) (res *http.Response, err error) {
+    // Before the request
+    start := time.Now()
+    LogReq(req)
+
+    // Forward the request to the next handler
+    res, err = next(req)
+
+    // Handle stuff after the request
+    end := time.Now()
+    LogRes(res, err, start - end)
+
+    return res, err
+}
+
+client := githubcomdedaluslabsdedalussdkgo.NewClient(
+    option.WithMiddleware(Logger),
+)
+```
+
+<Note>
+When multiple middlewares are provided, they are applied left to right. Client-level middleware runs before request-level middleware.
+</Note>
+
+### Custom HTTP Client
+
+Replace the default HTTP client:
+
+```go
+customHTTPClient := &http.Client{
+    Timeout: 30 * time.Second,
+    Transport: customTransport,
+}
+
+client := githubcomdedaluslabsdedalussdkgo.NewClient(
+    option.WithHTTPClient(customHTTPClient),
+)
+```
+
+<Warning>
+Only one HTTP client is accepted. This overwrites any previous client and receives requests after middleware has been applied.
+</Warning>
+
+## Accessing Raw Response Data
+
+Use `option.WithResponseInto()` to access response headers, status codes, and other details:
+
+```go
+var response *http.Response
+chatCompletion, err := client.Chat.Completions.New(
+    context.TODO(),
+    params,
+    option.WithResponseInto(&response),
+)
+if err != nil {
+    // handle error
+}
+
+fmt.Printf("Status Code: %d\n", response.StatusCode)
+fmt.Printf("Headers: %+#v\n", response.Header)
+```
+
+## Making Custom Requests
+
+For undocumented endpoints, use the HTTP verb methods:
+
+```go
+var (
+    // params can be an io.Reader, []byte, JSON serializable object,
+    // or a "…Params" struct defined in this library
+    params map[string]interface{}
+
+    // result can be []byte, *http.Response, JSON deserializable object,
+    // or a model defined in this library
+    result *http.Response
+)
+err := client.Post(context.Background(), "/unspecified", params, &result)
+if err != nil {
+    // handle error
+}
+```
+
+<Tip>
+Request options from the client (retries, headers, etc.) are respected when making custom requests.
+</Tip>

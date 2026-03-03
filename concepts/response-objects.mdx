@@ -1,0 +1,247 @@
+---
+title: Response Objects
+description: Understanding response structure, the JSON field, and handling missing, null, and invalid values
+---
+
+## Overview
+
+All response objects in the Dedalus Go SDK use value types (not pointers) for fields. Each response struct includes a special `JSON` field that provides detailed metadata about the response data.
+
+## Response Structure
+
+Unlike some Go libraries that use pointers for optional fields, the Dedalus SDK uses plain value types:
+
+```go
+type ChatCompletion struct {
+    ID      string           // Not *string
+    Model   string           // Not *string
+    Choices []Choice         // Not *[]Choice
+    JSON    chatCompletionJSON `json:"-"`
+}
+```
+
+<Info>
+Fields are value types, not pointers. If a field is `null`, not present, or invalid in the API response, it will be its zero value (`""`, `0`, `false`, `nil`, etc.).
+</Info>
+
+## The JSON Field
+
+Every response struct includes a special `JSON` field containing detailed metadata about each property. This field is not serialized (note the `json:"-"` tag) but provides powerful introspection capabilities.
+
+### Checking for Null Values
+
+Use `IsNull()` to determine if a field was explicitly `null` in the response:
+
+```go
+if res.Name == "" {
+    // true if `"name"` is either not present or explicitly null
+    if res.JSON.Name.IsNull() {
+        fmt.Println("Name was explicitly null")
+    }
+}
+```
+
+### Checking for Missing Fields
+
+Use `IsMissing()` to check if a field key was absent from the JSON:
+
+```go
+if res.Name == "" {
+    // true if the `"name"` key was not present in the response JSON at all
+    if res.JSON.Name.IsMissing() {
+        fmt.Println("Name field was not included in response")
+    }
+}
+```
+
+### Handling Invalid/Unexpected Data
+
+When the API returns data that cannot be coerced to the expected type, use `IsInvalid()` and `Raw()` to access the original JSON:
+
+```go
+if res.Name == "" {
+    if res.JSON.Name.IsInvalid() {
+        // Get the raw JSON value
+        raw := res.JSON.Name.Raw()
+
+        // Parse it as a different structure
+        legacyName := struct{
+            First string `json:"first"`
+            Last  string `json:"last"`
+        }{}
+        json.Unmarshal([]byte(raw), &legacyName)
+        name = legacyName.First + " " + legacyName.Last
+    }
+}
+```
+
+<Warning>
+`IsInvalid()` returns true when the API sends data that doesn't match the SDK's expected type. This is useful for handling API changes or legacy formats.
+</Warning>
+
+## Extra Fields
+
+The `.JSON` struct includes an `Extras` map containing any properties present in the JSON response but not defined in the SDK struct:
+
+```go
+body := res.JSON.ExtraFields["my_unexpected_field"].Raw()
+```
+
+This is useful for:
+- Accessing new API features not yet in the SDK
+- Debugging unexpected response data
+- Working with beta or experimental API fields
+
+<Tip>
+Extra fields let you access API features before they're officially added to the SDK, enabling forward compatibility.
+</Tip>
+
+## Complete Example
+
+Here's a comprehensive example demonstrating response handling:
+
+```go
+package main
+
+import (
+    "context"
+    "encoding/json"
+    "fmt"
+
+    "github.com/dedalus-labs/dedalus-sdk-go"
+    "github.com/dedalus-labs/dedalus-sdk-go/option"
+    "github.com/dedalus-labs/dedalus-sdk-go/shared"
+)
+
+func main() {
+    client := githubcomdedaluslabsdedalussdkgo.NewClient(
+        option.WithAPIKey("My API Key"),
+    )
+
+    chatCompletion, err := client.Chat.Completions.New(context.TODO(), githubcomdedaluslabsdedalussdkgo.ChatCompletionNewParams{
+        Model: githubcomdedaluslabsdedalussdkgo.F[githubcomdedaluslabsdedalussdkgo.ChatCompletionNewParamsModelUnion](
+            shared.UnionString("openai/gpt-5-nano"),
+        ),
+        Messages: githubcomdedaluslabsdedalussdkgo.F([]githubcomdedaluslabsdedalussdkgo.ChatCompletionNewParamsMessageUnion{
+            githubcomdedaluslabsdedalussdkgo.ChatCompletionUserMessageParam{
+                Role:    githubcomdedaluslabsdedalussdkgo.F(githubcomdedaluslabsdedalussdkgo.ChatCompletionUserMessageParamRoleUser),
+                Content: githubcomdedaluslabsdedalussdkgo.F[githubcomdedaluslabsdedalussdkgo.ChatCompletionUserMessageParamContentUnion](
+                    shared.UnionString("Hello, how are you today?"),
+                ),
+            },
+        }),
+    })
+    if err != nil {
+        panic(err.Error())
+    }
+
+    // Access the completion ID
+    fmt.Printf("Completion ID: %s\n", chatCompletion.ID)
+
+    // Check if a field is null, missing, or invalid
+    if chatCompletion.SystemFingerprint == "" {
+        if chatCompletion.JSON.SystemFingerprint.IsNull() {
+            fmt.Println("System fingerprint was explicitly null")
+        } else if chatCompletion.JSON.SystemFingerprint.IsMissing() {
+            fmt.Println("System fingerprint was not in response")
+        } else if chatCompletion.JSON.SystemFingerprint.IsInvalid() {
+            fmt.Println("System fingerprint had unexpected format")
+            raw := chatCompletion.JSON.SystemFingerprint.Raw()
+            fmt.Printf("Raw value: %s\n", raw)
+        }
+    }
+
+    // Access extra fields not in the SDK
+    if experimentalFeature, ok := chatCompletion.JSON.ExtraFields["experimental_feature"]; ok {
+        fmt.Printf("Experimental feature: %s\n", experimentalFeature.Raw())
+    }
+}
+```
+
+## Field State Methods
+
+The `JSON` field provides these methods for each response property:
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `IsNull()` | `bool` | True if the field was explicitly `null` in the JSON |
+| `IsMissing()` | `bool` | True if the field key was not present in the JSON |
+| `IsInvalid()` | `bool` | True if the value couldn't be parsed to the expected type |
+| `Raw()` | `string` | The raw JSON string value for this field |
+
+## Getting Raw JSON
+
+You can access the complete raw JSON response:
+
+```go
+// Get the entire response as raw JSON
+rawJSON := chatCompletion.JSON.RawJSON()
+fmt.Println(rawJSON)
+
+// Get raw JSON for a specific field
+rawName := chatCompletion.JSON.Name.Raw()
+fmt.Println(rawName)
+```
+
+## Common Patterns
+
+### Pattern 1: Distinguishing Null from Missing
+
+```go
+if res.OptionalField == "" {
+    if res.JSON.OptionalField.IsNull() {
+        // Field was present with value `null`
+        fmt.Println("User explicitly cleared this field")
+    } else if res.JSON.OptionalField.IsMissing() {
+        // Field was not in the response at all
+        fmt.Println("Field not applicable for this response")
+    }
+}
+```
+
+### Pattern 2: Handling Schema Changes
+
+```go
+// API used to return a string, now returns an object
+if res.JSON.LegacyField.IsInvalid() {
+    raw := res.JSON.LegacyField.Raw()
+    
+    // Try parsing as the old format
+    var oldFormat string
+    if err := json.Unmarshal([]byte(raw), &oldFormat); err == nil {
+        fmt.Printf("Using legacy format: %s\n", oldFormat)
+    }
+}
+```
+
+### Pattern 3: Accessing Beta Features
+
+```go
+// Access fields not yet in the SDK
+if betaField, ok := res.JSON.ExtraFields["beta_feature"]; ok {
+    var betaData BetaFeature
+    json.Unmarshal([]byte(betaField.Raw()), &betaData)
+    // Use betaData...
+}
+```
+
+<Note>
+The JSON metadata system allows you to handle API evolution gracefully, distinguishing between null values, missing fields, and schema changes.
+</Note>
+
+## Zero Values Reference
+
+Since response fields use value types, understanding zero values is important:
+
+| Type | Zero Value |
+|------|------------|
+| `string` | `""` (empty string) |
+| `int`, `int64`, `float64` | `0` |
+| `bool` | `false` |
+| `[]T` (slice) | `nil` |
+| `map[K]V` | `nil` |
+| `struct` | All fields set to their zero values |
+
+<Info>
+Always use the `.JSON` field methods to distinguish between intentional zero values and missing/null data.
+</Info>

@@ -1,0 +1,392 @@
+---
+title: 'Pagination'
+description: 'Work with paginated list endpoints in the Dedalus Go SDK'
+---
+
+## Overview
+
+The Dedalus Go SDK provides convenient methods for working with paginated API responses, allowing you to retrieve large datasets efficiently.
+
+## Available Methods
+
+The SDK offers two approaches to pagination:
+
+<CardGroup cols={2}>
+  <Card title="List()" icon="list">
+    Fetch a single page and manually handle pagination using `GetNextPage()`.
+  </Card>
+  
+  <Card title="ListAutoPaging()" icon="arrows-rotate">
+    Automatically iterate through all pages without manual pagination logic.
+  </Card>
+</CardGroup>
+
+## List Models Example
+
+The Models API returns a list of available models:
+
+```go
+import (
+    "context"
+    "fmt"
+    
+    "github.com/dedalus-labs/dedalus-sdk-go"
+    "github.com/dedalus-labs/dedalus-sdk-go/option"
+)
+
+func main() {
+    client := githubcomdedaluslabsdedalussdkgo.NewClient(
+        option.WithAPIKey("your-api-key"),
+    )
+    
+    // Simple list - returns all models in a single response
+    modelsResponse, err := client.Models.List(context.TODO())
+    if err != nil {
+        panic(err.Error())
+    }
+    
+    fmt.Printf("Total models: %d\n", len(modelsResponse.Data))
+    
+    for _, model := range modelsResponse.Data {
+        fmt.Printf("Model: %s (Provider: %s)\n", model.ID, model.Provider)
+    }
+}
+```
+
+<Info>
+  The `/v1/models` endpoint returns all models in a single response and doesn't require pagination in most cases.
+</Info>
+
+## Manual Pagination with GetNextPage()
+
+For endpoints that support pagination, use `GetNextPage()` to fetch subsequent pages:
+
+```go
+import (
+    "context"
+    "fmt"
+)
+
+func listWithManualPagination(client *githubcomdedaluslabsdedalussdkgo.Client) {
+    ctx := context.TODO()
+    
+    // Fetch first page
+    page, err := client.SomeService.List(ctx, params)
+    if err != nil {
+        panic(err.Error())
+    }
+    
+    pageNum := 1
+    
+    for {
+        fmt.Printf("Processing page %d\n", pageNum)
+        
+        // Process items on current page
+        for _, item := range page.Data {
+            fmt.Printf("Item: %+v\n", item)
+        }
+        
+        // Check if there are more pages
+        if !page.HasNextPage() {
+            break
+        }
+        
+        // Fetch next page
+        page, err = page.GetNextPage()
+        if err != nil {
+            panic(err.Error())
+        }
+        
+        pageNum++
+    }
+    
+    fmt.Printf("Total pages processed: %d\n", pageNum)
+}
+```
+
+<Steps>
+  <Step title="Fetch First Page">
+    Call the `.List()` method to retrieve the first page of results.
+  </Step>
+  
+  <Step title="Process Items">
+    Iterate through the items in the current page's `.Data` field.
+  </Step>
+  
+  <Step title="Check for Next Page">
+    Use `.HasNextPage()` to determine if more pages are available.
+  </Step>
+  
+  <Step title="Fetch Next Page">
+    Call `.GetNextPage()` to retrieve the next page and repeat.
+  </Step>
+</Steps>
+
+## Auto-Paging
+
+For simplified pagination, use `ListAutoPaging()` to automatically iterate through all pages:
+
+```go
+import (
+    "context"
+    "fmt"
+)
+
+func listWithAutoPaging(client *githubcomdedaluslabsdedalussdkgo.Client) {
+    ctx := context.TODO()
+    
+    // Create auto-paging iterator
+    iter := client.SomeService.ListAutoPaging(ctx, params)
+    
+    // Iterate through all pages automatically
+    for iter.Next() {
+        item := iter.Current()
+        fmt.Printf("Item: %+v\n", item)
+    }
+    
+    // Check for errors after iteration
+    if err := iter.Err(); err != nil {
+        panic(err.Error())
+    }
+}
+```
+
+<Tip>
+  `ListAutoPaging()` handles pagination automatically, making your code cleaner and reducing the chance of pagination bugs.
+</Tip>
+
+## Pagination Parameters
+
+When working with paginated endpoints, you can typically control:
+
+- **Page size**: Number of items per page
+- **Starting cursor**: Where to start fetching results
+- **Ordering**: Sort order of results
+
+Example:
+
+```go
+params := SomeServiceListParams{
+    Limit:  githubcomdedaluslabsdedalussdkgo.F(50),      // 50 items per page
+    Cursor: githubcomdedaluslabsdedalussdkgo.F("abc123"), // Start from cursor
+}
+
+page, err := client.SomeService.List(ctx, params)
+```
+
+## Complete Pagination Example
+
+```go
+package main
+
+import (
+    "context"
+    "fmt"
+    
+    "github.com/dedalus-labs/dedalus-sdk-go"
+    "github.com/dedalus-labs/dedalus-sdk-go/option"
+)
+
+func main() {
+    client := githubcomdedaluslabsdedalussdkgo.NewClient(
+        option.WithAPIKey("your-api-key"),
+    )
+    
+    // Example 1: Simple list (all results)
+    fmt.Println("=== Example 1: Simple List ===")
+    modelsResponse, err := client.Models.List(context.TODO())
+    if err != nil {
+        panic(err.Error())
+    }
+    
+    fmt.Printf("Found %d models\n", len(modelsResponse.Data))
+    for i, model := range modelsResponse.Data {
+        if i >= 5 {
+            fmt.Println("... and more")
+            break
+        }
+        fmt.Printf("  - %s (%s)\n", model.ID, model.Provider)
+    }
+    
+    // Example 2: Manual pagination (if endpoint supports it)
+    fmt.Println("\n=== Example 2: Manual Pagination ===")
+    page, err := client.SomeService.List(context.TODO(), params)
+    if err != nil {
+        panic(err.Error())
+    }
+    
+    totalItems := 0
+    pageNum := 1
+    
+    for {
+        fmt.Printf("Page %d: %d items\n", pageNum, len(page.Data))
+        totalItems += len(page.Data)
+        
+        if !page.HasNextPage() {
+            break
+        }
+        
+        page, err = page.GetNextPage()
+        if err != nil {
+            panic(err.Error())
+        }
+        
+        pageNum++
+    }
+    
+    fmt.Printf("Total items across %d pages: %d\n", pageNum, totalItems)
+    
+    // Example 3: Auto-paging
+    fmt.Println("\n=== Example 3: Auto-Paging ===")
+    iter := client.SomeService.ListAutoPaging(context.TODO(), params)
+    
+    count := 0
+    for iter.Next() {
+        item := iter.Current()
+        count++
+        
+        if count <= 5 {
+            fmt.Printf("Item %d: %+v\n", count, item)
+        }
+    }
+    
+    if err := iter.Err(); err != nil {
+        panic(err.Error())
+    }
+    
+    fmt.Printf("Total items processed: %d\n", count)
+}
+```
+
+## Response Structure
+
+Paginated responses typically follow this structure:
+
+```go
+type ListModelsResponse struct {
+    // List of items
+    Data []Model `json:"data"`
+    
+    // Response object type
+    Object string `json:"object"`
+    
+    // Pagination cursor (if applicable)
+    NextCursor string `json:"next_cursor,omitempty"`
+    
+    // Whether more pages exist
+    HasMore bool `json:"has_more,omitempty"`
+}
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Use Auto-Paging" icon="wand-magic-sparkles">
+    Prefer `ListAutoPaging()` when you need to process all results to avoid manual pagination errors.
+  </Card>
+  
+  <Card title="Set Page Size" icon="sliders">
+    Use appropriate page sizes (e.g., 50-100) to balance memory usage and API calls.
+  </Card>
+  
+  <Card title="Handle Errors" icon="triangle-exclamation">
+    Always check for errors after iteration, especially with auto-paging.
+  </Card>
+  
+  <Card title="Use Context" icon="clock">
+    Provide a context with timeout to avoid indefinite pagination loops.
+  </Card>
+</CardGroup>
+
+## Advanced Patterns
+
+### Limit Total Items
+
+```go
+iter := client.SomeService.ListAutoPaging(ctx, params)
+
+maxItems := 100
+count := 0
+
+for iter.Next() && count < maxItems {
+    item := iter.Current()
+    // Process item
+    count++
+}
+
+if err := iter.Err(); err != nil {
+    panic(err.Error())
+}
+```
+
+### Collect All Items
+
+```go
+var allItems []Item
+
+iter := client.SomeService.ListAutoPaging(ctx, params)
+
+for iter.Next() {
+    allItems = append(allItems, iter.Current())
+}
+
+if err := iter.Err(); err != nil {
+    panic(err.Error())
+}
+
+fmt.Printf("Collected %d items\n", len(allItems))
+```
+
+### Concurrent Page Processing
+
+```go
+import "sync"
+
+var wg sync.WaitGroup
+resultsChan := make(chan Result, 100)
+
+// Fetch pages concurrently
+for i := 0; i < numWorkers; i++ {
+    wg.Add(1)
+    go func(workerID int) {
+        defer wg.Done()
+        
+        iter := client.SomeService.ListAutoPaging(ctx, params)
+        for iter.Next() {
+            resultsChan <- processItem(iter.Current())
+        }
+    }(i)
+}
+
+go func() {
+    wg.Wait()
+    close(resultsChan)
+}()
+
+// Collect results
+for result := range resultsChan {
+    fmt.Printf("Result: %+v\n", result)
+}
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Pagination Loop Never Ends">
+    - Set a context with timeout
+    - Add a maximum iteration counter
+    - Check that the API is returning correct pagination cursors
+  </Accordion>
+  
+  <Accordion title="Missing Items">
+    - Ensure you're not modifying the collection while paginating
+    - Check if items are being added/deleted between page requests
+    - Verify cursor/offset values are correct
+  </Accordion>
+  
+  <Accordion title="Out of Memory">
+    - Reduce page size
+    - Process items incrementally instead of collecting all at once
+    - Use streaming or chunked processing
+  </Accordion>
+</AccordionGroup>

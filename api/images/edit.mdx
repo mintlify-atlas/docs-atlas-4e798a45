@@ -1,0 +1,340 @@
+---
+title: 'Edit Images'
+description: 'Edit images using inpainting with DALL-E'
+api: 'POST /v1/images/edits'
+---
+
+## Overview
+
+Edits images using inpainting. Supports `dall-e-2` and `gpt-image-1`. Upload an image and optionally a mask to indicate which areas to regenerate based on the prompt.
+
+## Method Signature
+
+```go
+func (r *ImageService) Edit(
+    ctx context.Context,
+    body ImageEditParams,
+    opts ...option.RequestOption,
+) (*ImagesResponse, error)
+```
+
+## Request Parameters
+
+<ParamField path="image" type="io.Reader" required>
+  The image to edit. Must be:
+  - A valid PNG file
+  - Less than 4MB
+  - Square dimensions
+  
+  If mask is not provided, the image must have transparency (alpha channel) indicating the area to regenerate.
+</ParamField>
+
+<ParamField path="prompt" type="string" required>
+  A text description of the desired edits. The model will regenerate the masked/transparent areas based on this prompt.
+</ParamField>
+
+<ParamField path="mask" type="io.Reader">
+  An additional image whose fully transparent areas (alpha = 0) indicate where the original image should be edited. Must be:
+  - A valid PNG file
+  - Same dimensions as the image
+  - Less than 4MB
+  
+  If not provided, the image's own alpha channel is used.
+</ParamField>
+
+<ParamField path="model" type="string" default="openai/dall-e-2">
+  The model to use:
+  - `openai/dall-e-2`
+  - `openai/gpt-image-1`
+</ParamField>
+
+<ParamField path="n" type="int64" default="1">
+  Number of images to generate. Must be between 1 and 10 for `dall-e-2`.
+</ParamField>
+
+<ParamField path="size" type="string" default="1024x1024">
+  Size of generated images:
+  - For `dall-e-2`: `256x256`, `512x512`, `1024x1024`
+</ParamField>
+
+<ParamField path="response_format" type="string" default="url">
+  Format for returned images:
+  - `url` - Returns URLs (valid for 60 minutes)
+  - `b64_json` - Returns base64-encoded JSON
+</ParamField>
+
+<ParamField path="user" type="string">
+  Unique identifier for end-user for abuse monitoring
+</ParamField>
+
+## Response Fields
+
+<ResponseField name="created" type="int64" required>
+  Unix timestamp when images were created
+</ResponseField>
+
+<ResponseField name="data" type="[]Image" required>
+  Array of edited images
+  <Expandable title="Image fields">
+    <ResponseField name="url" type="string">
+      URL of the edited image (if response_format=url)
+    </ResponseField>
+    <ResponseField name="b64_json" type="string">
+      Base64-encoded image data (if response_format=b64_json)
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## Code Examples
+
+### Basic Image Editing with Transparent Area
+
+```go
+package main
+
+import (
+    "context"
+    "fmt"
+    "log"
+    "os"
+
+    dedalus "github.com/dedalus-labs/dedalus-sdk-go"
+    "github.com/dedalus-labs/dedalus-sdk-go/option"
+)
+
+func main() {
+    client := dedalus.NewClient(
+        option.WithAPIKey("your-api-key"),
+    )
+
+    ctx := context.Background()
+    
+    // Open image with transparent areas
+    imageFile, err := os.Open("image_with_transparency.png")
+    if err != nil {
+        log.Fatal(err)
+    }
+    defer imageFile.Close()
+
+    response, err := client.Images.Edit(ctx, dedalus.ImageEditParams{
+        Image:  dedalus.F[io.Reader](imageFile),
+        Prompt: dedalus.F("A beautiful sunset sky in the transparent area"),
+        Model:  dedalus.F("openai/dall-e-2"),
+    })
+
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    fmt.Println("Edited image URL:", response.Data[0].URL)
+}
+```
+
+### Image Editing with Separate Mask
+
+```go
+imageFile, err := os.Open("original_image.png")
+if err != nil {
+    log.Fatal(err)
+}
+defer imageFile.Close()
+
+maskFile, err := os.Open("mask.png")
+if err != nil {
+    log.Fatal(err)
+}
+defer maskFile.Close()
+
+response, err := client.Images.Edit(ctx, dedalus.ImageEditParams{
+    Image:  dedalus.F[io.Reader](imageFile),
+    Mask:   dedalus.F[io.Reader](maskFile),
+    Prompt: dedalus.F("Replace the masked area with a modern sofa"),
+    Model:  dedalus.F("openai/dall-e-2"),
+    Size:   dedalus.F("1024x1024"),
+})
+
+if err != nil {
+    log.Fatal(err)
+}
+
+fmt.Println("Edited image URL:", response.Data[0].URL)
+```
+
+### Generate Multiple Variations
+
+```go
+imageFile, err := os.Open("room.png")
+if err != nil {
+    log.Fatal(err)
+}
+defer imageFile.Close()
+
+response, err := client.Images.Edit(ctx, dedalus.ImageEditParams{
+    Image:  dedalus.F[io.Reader](imageFile),
+    Prompt: dedalus.F("Add a large potted plant in the corner"),
+    Model:  dedalus.F("openai/dall-e-2"),
+    N:      dedalus.F(int64(3)), // Generate 3 variations
+})
+
+if err != nil {
+    log.Fatal(err)
+}
+
+for i, image := range response.Data {
+    fmt.Printf("Variation %d: %s\n", i+1, image.URL)
+}
+```
+
+### Save Edited Image
+
+```go
+import (
+    "io"
+    "net/http"
+)
+
+imageFile, err := os.Open("product.png")
+if err != nil {
+    log.Fatal(err)
+}
+defer imageFile.Close()
+
+response, err := client.Images.Edit(ctx, dedalus.ImageEditParams{
+    Image:  dedalus.F[io.Reader](imageFile),
+    Prompt: dedalus.F("Change the background to solid white"),
+    Model:  dedalus.F("openai/dall-e-2"),
+})
+
+if err != nil {
+    log.Fatal(err)
+}
+
+// Download edited image
+resp, err := http.Get(response.Data[0].URL)
+if err != nil {
+    log.Fatal(err)
+}
+defer resp.Body.Close()
+
+// Save to file
+outFile, err := os.Create("edited_product.png")
+if err != nil {
+    log.Fatal(err)
+}
+defer outFile.Close()
+
+_, err = io.Copy(outFile, resp.Body)
+if err != nil {
+    log.Fatal(err)
+}
+
+fmt.Println("Edited image saved successfully")
+```
+
+### Base64 Response Format
+
+```go
+import "encoding/base64"
+
+imageFile, err := os.Open("photo.png")
+if err != nil {
+    log.Fatal(err)
+}
+defer imageFile.Close()
+
+response, err := client.Images.Edit(ctx, dedalus.ImageEditParams{
+    Image:          dedalus.F[io.Reader](imageFile),
+    Prompt:         dedalus.F("Remove the person from the image"),
+    Model:          dedalus.F("openai/dall-e-2"),
+    ResponseFormat: dedalus.F("b64_json"),
+})
+
+if err != nil {
+    log.Fatal(err)
+}
+
+// Decode and save
+imageData, err := base64.StdEncoding.DecodeString(response.Data[0].B64JSON)
+if err != nil {
+    log.Fatal(err)
+}
+
+err = os.WriteFile("edited_image.png", imageData, 0644)
+if err != nil {
+    log.Fatal(err)
+}
+```
+
+### Object Replacement
+
+```go
+imageFile, err := os.Open("living_room.png")
+if err != nil {
+    log.Fatal(err)
+}
+defer imageFile.Close()
+
+maskFile, err := os.Open("furniture_mask.png")
+if err != nil {
+    log.Fatal(err)
+}
+defer maskFile.Close()
+
+response, err := client.Images.Edit(ctx, dedalus.ImageEditParams{
+    Image:  dedalus.F[io.Reader](imageFile),
+    Mask:   dedalus.F[io.Reader](maskFile),
+    Prompt: dedalus.F("A modern leather sectional sofa with decorative pillows"),
+    Model:  dedalus.F("openai/dall-e-2"),
+    Size:   dedalus.F("1024x1024"),
+})
+
+if err != nil {
+    log.Fatal(err)
+}
+
+fmt.Println("Furniture replaced:", response.Data[0].URL)
+```
+
+## Creating Masks
+
+Masks are PNG images where:
+- **Transparent areas (alpha = 0)**: Areas to be edited/regenerated
+- **Opaque areas (alpha = 255)**: Areas to keep unchanged
+
+You can create masks using:
+- Image editing software (Photoshop, GIMP, etc.)
+- Code libraries (PIL/Pillow, ImageMagick, etc.)
+- Drawing tools with transparency support
+
+## Use Cases
+
+- **Object Removal**: Remove unwanted objects from photos
+- **Background Replacement**: Change backgrounds while keeping subjects
+- **Object Insertion**: Add new objects to existing images
+- **Style Transfer**: Apply different styles to specific areas
+- **Product Photography**: Modify product images for marketing
+- **Photo Restoration**: Fill in damaged or missing areas
+- **Interior Design**: Visualize furniture and decor changes
+
+## Image Requirements
+
+### Original Image
+- **Format**: PNG
+- **Size**: Less than 4MB
+- **Dimensions**: Must be square (e.g., 512x512, 1024x1024)
+- **Transparency**: If no mask provided, transparent areas indicate edit regions
+
+### Mask Image (Optional)
+- **Format**: PNG
+- **Size**: Less than 4MB
+- **Dimensions**: Must match original image exactly
+- **Alpha Channel**: Fully transparent (alpha=0) areas indicate edit regions
+
+## Best Practices
+
+1. **Image Quality**: Use high-quality source images for best results
+2. **Mask Precision**: Create clean, well-defined masks for better edits
+3. **Prompt Clarity**: Write specific prompts describing the desired edits
+4. **Batch Processing**: Generate multiple variations (n>1) to choose the best result
+5. **Size Consistency**: Ensure image and mask have identical dimensions
+6. **Edge Blending**: Use slightly feathered mask edges for more natural blending

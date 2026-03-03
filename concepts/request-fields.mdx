@@ -1,0 +1,248 @@
+---
+title: Request Fields
+description: Understanding the Field type system and how to construct request parameters in the Dedalus Go SDK
+---
+
+## Overview
+
+The Dedalus Go SDK uses a generic `Field` type system to wrap all request parameters. This design prevents common mistakes with zero values and provides explicit control over null, missing, and non-conforming values.
+
+## Why Field Types?
+
+Go's zero values can create ambiguity in API requests:
+
+- Is `0` an intentional value or a forgotten parameter?
+- Does an empty string mean "set to empty" or "don't include this field"?
+- How do you send `null` explicitly?
+
+The `Field` type solves these problems by distinguishing between:
+
+1. **Present values** - Explicitly set
+2. **Null values** - Explicitly set to null
+3. **Missing values** - Not specified (omitted from request)
+4. **Non-conforming values** - Values of a different type than expected
+
+<Info>
+This prevents accidentally sending zero values when you forget a required parameter and enables explicitly sending `null`, `false`, `''`, or `0` on optional parameters.
+</Info>
+
+## Field Helpers
+
+The SDK provides several helper functions to construct `Field` values:
+
+### F() - Generic Field Constructor
+
+The most commonly used helper for wrapping any value:
+
+```go
+params := githubcomdedaluslabsdedalussdkgo.ChatCompletionNewParams{
+    Model: githubcomdedaluslabsdedalussdkgo.F[githubcomdedaluslabsdedalussdkgo.ChatCompletionNewParamsModelUnion](
+        shared.UnionString("openai/gpt-5-nano"),
+    ),
+    Messages: githubcomdedaluslabsdedalussdkgo.F([]githubcomdedaluslabsdedalussdkgo.ChatCompletionNewParamsMessageUnion{
+        // ...
+    }),
+}
+```
+
+### Type-Specific Helpers
+
+For convenience, there are type-specific helpers:
+
+```go
+params := FooParams{
+    Name:  githubcomdedaluslabsdedalussdkgo.String("hello"),
+    Count: githubcomdedaluslabsdedalussdkgo.Int(42),
+    Price: githubcomdedaluslabsdedalussdkgo.Float(19.99),
+    Active: githubcomdedaluslabsdedalussdkgo.Bool(true),
+}
+```
+
+These are equivalent to using `F()` but more concise:
+
+| Helper | Equivalent |
+|--------|------------|
+| `String("hello")` | `F[string]("hello")` |
+| `Int(42)` | `F[int64](42)` |
+| `Float(19.99)` | `F[float64](19.99)` |
+| `Bool(true)` | `F[bool](true)` |
+
+### Null() - Explicit Null Values
+
+Use `Null[T]()` to explicitly send `null` in the JSON request:
+
+```go
+params := FooParams{
+    Name: githubcomdedaluslabsdedalussdkgo.F("hello"),
+
+    // Explicitly send `"description": null`
+    Description: githubcomdedaluslabsdedalussdkgo.Null[string](),
+}
+```
+
+This generates JSON:
+```json
+{
+  "name": "hello",
+  "description": null
+}
+```
+
+<Note>
+If you don't set a field at all, it won't be included in the request. Use `Null[T]()` when you need to explicitly send `null`.
+</Note>
+
+### Raw() - Non-Conforming Values
+
+Use `Raw[T](value)` when the API expects one type but you need to send another:
+
+```go
+params := FooParams{
+    Name: githubcomdedaluslabsdedalussdkgo.F("hello"),
+
+    Point: githubcomdedaluslabsdedalussdkgo.F(githubcomdedaluslabsdedalussdkgo.Point{
+        X: githubcomdedaluslabsdedalussdkgo.Int(0),
+        Y: githubcomdedaluslabsdedalussdkgo.Int(1),
+
+        // In cases where the API specifies a given type,
+        // but you want to send something else, use `Raw`:
+        Z: githubcomdedaluslabsdedalussdkgo.Raw[int64](0.01), // sends a float
+    }),
+}
+```
+
+<Warning>
+`Raw()` bypasses type safety. Use it only when necessary for API compatibility or to work around type mismatches.
+</Warning>
+
+## Complete Example
+
+Here's a comprehensive example showing different field helpers:
+
+```go
+package main
+
+import (
+    "context"
+    "fmt"
+
+    "github.com/dedalus-labs/dedalus-sdk-go"
+    "github.com/dedalus-labs/dedalus-sdk-go/option"
+    "github.com/dedalus-labs/dedalus-sdk-go/shared"
+)
+
+func main() {
+    client := githubcomdedaluslabsdedalussdkgo.NewClient(
+        option.WithAPIKey("My API Key"),
+    )
+
+    chatCompletion, err := client.Chat.Completions.New(context.TODO(), githubcomdedaluslabsdedalussdkgo.ChatCompletionNewParams{
+        Model: githubcomdedaluslabsdedalussdkgo.F[githubcomdedaluslabsdedalussdkgo.ChatCompletionNewParamsModelUnion](
+            shared.UnionString("openai/gpt-5-nano"),
+        ),
+        Messages: githubcomdedaluslabsdedalussdkgo.F([]githubcomdedaluslabsdedalussdkgo.ChatCompletionNewParamsMessageUnion{
+            githubcomdedaluslabsdedalussdkgo.ChatCompletionSystemMessageParam{
+                Role:    githubcomdedaluslabsdedalussdkgo.F(githubcomdedaluslabsdedalussdkgo.ChatCompletionSystemMessageParamRoleSystem),
+                Content: githubcomdedaluslabsdedalussdkgo.F[githubcomdedaluslabsdedalussdkgo.ChatCompletionSystemMessageParamContentUnion](
+                    shared.UnionString("You are Stephen Dedalus. Respond in morose Joycean malaise."),
+                ),
+            },
+            githubcomdedaluslabsdedalussdkgo.ChatCompletionUserMessageParam{
+                Role:    githubcomdedaluslabsdedalussdkgo.F(githubcomdedaluslabsdedalussdkgo.ChatCompletionUserMessageParamRoleUser),
+                Content: githubcomdedaluslabsdedalussdkgo.F[githubcomdedaluslabsdedalussdkgo.ChatCompletionUserMessageParamContentUnion](
+                    shared.UnionString("Hello, how are you today?"),
+                ),
+            },
+        }),
+    })
+    if err != nil {
+        panic(err.Error())
+    }
+    fmt.Printf("%+v\n", chatCompletion.ID)
+}
+```
+
+## File Upload Fields
+
+Request parameters for file uploads are typed as `param.Field[io.Reader]`. Use the `FileParam()` helper to specify filename and content type:
+
+```go
+import (
+    "os"
+    "strings"
+    "io"
+)
+
+// A file from the file system
+file, err := os.Open("/path/to/file")
+params := githubcomdedaluslabsdedalussdkgo.AudioTranscriptionNewParams{
+    File:  githubcomdedaluslabsdedalussdkgo.F[io.Reader](file),
+    Model: githubcomdedaluslabsdedalussdkgo.F("model"),
+}
+
+// A file from a string
+params = githubcomdedaluslabsdedalussdkgo.AudioTranscriptionNewParams{
+    File:  githubcomdedaluslabsdedalussdkgo.F[io.Reader](strings.NewReader("my file contents")),
+    Model: githubcomdedaluslabsdedalussdkgo.F("model"),
+}
+
+// With a custom filename and contentType
+params = githubcomdedaluslabsdedalussdkgo.AudioTranscriptionNewParams{
+    File: githubcomdedaluslabsdedalussdkgo.FileParam(
+        strings.NewReader(`{"hello": "foo"}`),
+        "file.go",
+        "application/json",
+    ),
+    Model: githubcomdedaluslabsdedalussdkgo.F("model"),
+}
+```
+
+<Info>
+By default, `io.Reader` is sent with filename "anonymous_file" and content-type "application/octet-stream". Files opened with `os.Open()` automatically use the filename on disk.
+</Info>
+
+## Best Practices
+
+<Steps>
+  <Step title="Always wrap values">
+    Never pass raw values to parameter fields. Always use `F()`, `String()`, `Int()`, etc.
+    
+    ```go
+    // ❌ Wrong - will not compile
+    params := FooParams{
+        Name: "hello",
+    }
+    
+    // ✅ Correct
+    params := FooParams{
+        Name: githubcomdedaluslabsdedalussdkgo.F("hello"),
+    }
+    ```
+  </Step>
+
+  <Step title="Use Null() intentionally">
+    Only use `Null[T]()` when the API requires an explicit `null` value.
+    
+    ```go
+    // Omit the field entirely (not included in request)
+    params := FooParams{
+        Name: githubcomdedaluslabsdedalussdkgo.F("hello"),
+        // Description not set - omitted from JSON
+    }
+    
+    // Send explicit null
+    params = FooParams{
+        Name: githubcomdedaluslabsdedalussdkgo.F("hello"),
+        Description: githubcomdedaluslabsdedalussdkgo.Null[string](), // sends null
+    }
+    ```
+  </Step>
+
+  <Step title="Avoid Raw() when possible">
+    Only use `Raw[T]()` as a last resort for type mismatches. It bypasses type safety.
+  </Step>
+</Steps>
+
+<Tip>
+The Field type system provides compile-time safety. If you forget to wrap a required parameter, the code won't compile, preventing runtime errors.
+</Tip>

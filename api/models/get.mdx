@@ -1,0 +1,390 @@
+---
+title: 'Get Model'
+description: 'Retrieve detailed information about a specific model'
+api: 'GET /v1/models/{model_id}'
+---
+
+## Overview
+
+Retrieves detailed information about a specific model, including its capabilities, provider, and supported features.
+
+## Method Signature
+
+```go
+func (r *ModelService) Get(
+    ctx context.Context,
+    modelID string,
+    opts ...option.RequestOption,
+) (*Model, error)
+```
+
+## Path Parameters
+
+<ParamField path="model_id" type="string" required>
+  The ID of the model to retrieve. Format: `provider/model-name`
+  
+  Examples:
+  - `openai/gpt-4`
+  - `anthropic/claude-3-5-sonnet-20241022`
+  - `google/gemini-1.5-pro`
+</ParamField>
+
+## Response Fields
+
+<ResponseField name="id" type="string" required>
+  Unique model identifier with provider prefix
+</ResponseField>
+
+<ResponseField name="provider" type="string" required>
+  Provider that hosts the model: `openai`, `anthropic`, `google`, `xai`, `mistral`, `groq`, `fireworks`, `deepseek`
+</ResponseField>
+
+<ResponseField name="created_at" type="time.Time" required>
+  When the model was released (RFC 3339 format)
+</ResponseField>
+
+<ResponseField name="display_name" type="string">
+  Human-readable model name
+</ResponseField>
+
+<ResponseField name="description" type="string">
+  Model description
+</ResponseField>
+
+<ResponseField name="version" type="string">
+  Model version identifier
+</ResponseField>
+
+<ResponseField name="capabilities" type="ModelCapabilities">
+  Normalized model capabilities
+  <Expandable title="Capability fields">
+    <ResponseField name="text" type="bool">
+      Supports text generation
+    </ResponseField>
+    <ResponseField name="vision" type="bool">
+      Supports image understanding
+    </ResponseField>
+    <ResponseField name="audio" type="bool">
+      Supports audio processing
+    </ResponseField>
+    <ResponseField name="image_generation" type="bool">
+      Supports image generation
+    </ResponseField>
+    <ResponseField name="tools" type="bool">
+      Supports function/tool calling
+    </ResponseField>
+    <ResponseField name="streaming" type="bool">
+      Supports streaming responses
+    </ResponseField>
+    <ResponseField name="structured_output" type="bool">
+      Supports structured JSON output
+    </ResponseField>
+    <ResponseField name="thinking" type="bool">
+      Supports extended thinking/reasoning
+    </ResponseField>
+    <ResponseField name="input_token_limit" type="int64">
+      Maximum input tokens
+    </ResponseField>
+    <ResponseField name="output_token_limit" type="int64">
+      Maximum output tokens
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="defaults" type="ModelDefaults">
+  Provider-declared default parameters
+  <Expandable title="Default fields">
+    <ResponseField name="temperature" type="float64">
+      Default temperature setting
+    </ResponseField>
+    <ResponseField name="top_p" type="float64">
+      Default top_p setting
+    </ResponseField>
+    <ResponseField name="top_k" type="int64">
+      Default top_k setting
+    </ResponseField>
+    <ResponseField name="max_output_tokens" type="int64">
+      Default maximum output tokens
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="provider_info" type="map[string]interface{}">
+  Raw provider-specific metadata
+</ResponseField>
+
+<ResponseField name="provider_declared_generation_methods" type="[]string">
+  Provider-specific generation method names
+</ResponseField>
+
+## Code Examples
+
+### Get Single Model
+
+```go
+package main
+
+import (
+    "context"
+    "fmt"
+    "log"
+
+    dedalus "github.com/dedalus-labs/dedalus-sdk-go"
+    "github.com/dedalus-labs/dedalus-sdk-go/option"
+)
+
+func main() {
+    client := dedalus.NewClient(
+        option.WithAPIKey("your-api-key"),
+    )
+
+    ctx := context.Background()
+    
+    model, err := client.Models.Get(ctx, "openai/gpt-4")
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    fmt.Printf("Model: %s\n", model.ID)
+    fmt.Printf("Provider: %s\n", model.Provider)
+    fmt.Printf("Display Name: %s\n", model.DisplayName)
+    fmt.Printf("Description: %s\n", model.Description)
+}
+```
+
+### Check Model Capabilities
+
+```go
+model, err := client.Models.Get(ctx, "anthropic/claude-3-5-sonnet-20241022")
+if err != nil {
+    log.Fatal(err)
+}
+
+fmt.Printf("Model: %s\n\n", model.ID)
+fmt.Println("Capabilities:")
+
+if model.Capabilities.Text {
+    fmt.Println("  ✓ Text generation")
+}
+if model.Capabilities.Vision {
+    fmt.Println("  ✓ Vision (image understanding)")
+}
+if model.Capabilities.Audio {
+    fmt.Println("  ✓ Audio processing")
+}
+if model.Capabilities.Tools {
+    fmt.Println("  ✓ Function/tool calling")
+}
+if model.Capabilities.Streaming {
+    fmt.Println("  ✓ Streaming responses")
+}
+if model.Capabilities.StructuredOutput {
+    fmt.Println("  ✓ Structured JSON output")
+}
+```
+
+### Display Token Limits
+
+```go
+model, err := client.Models.Get(ctx, "google/gemini-1.5-pro")
+if err != nil {
+    log.Fatal(err)
+}
+
+fmt.Printf("Model: %s\n", model.ID)
+fmt.Printf("Input Token Limit: %d\n", model.Capabilities.InputTokenLimit)
+fmt.Printf("Output Token Limit: %d\n", model.Capabilities.OutputTokenLimit)
+
+// Calculate total context window
+totalTokens := model.Capabilities.InputTokenLimit + model.Capabilities.OutputTokenLimit
+fmt.Printf("Total Context: %d tokens\n", totalTokens)
+```
+
+### Check Default Parameters
+
+```go
+model, err := client.Models.Get(ctx, "openai/gpt-4")
+if err != nil {
+    log.Fatal(err)
+}
+
+fmt.Printf("Model: %s\n\n", model.ID)
+fmt.Println("Default Parameters:")
+
+if model.Defaults.Temperature > 0 {
+    fmt.Printf("  Temperature: %.2f\n", model.Defaults.Temperature)
+}
+if model.Defaults.TopP > 0 {
+    fmt.Printf("  Top P: %.2f\n", model.Defaults.TopP)
+}
+if model.Defaults.TopK > 0 {
+    fmt.Printf("  Top K: %d\n", model.Defaults.TopK)
+}
+if model.Defaults.MaxOutputTokens > 0 {
+    fmt.Printf("  Max Output Tokens: %d\n", model.Defaults.MaxOutputTokens)
+}
+```
+
+### Validate Model Exists
+
+```go
+func validateModel(client *dedalus.Client, modelID string) error {
+    ctx := context.Background()
+    
+    _, err := client.Models.Get(ctx, modelID)
+    if err != nil {
+        return fmt.Errorf("model %s not found or not accessible: %w", modelID, err)
+    }
+    
+    return nil
+}
+
+// Usage
+err := validateModel(client, "openai/gpt-4")
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Println("Model is valid and accessible")
+```
+
+### Compare Multiple Models
+
+```go
+modelIDs := []string{
+    "openai/gpt-4",
+    "anthropic/claude-3-5-sonnet-20241022",
+    "google/gemini-1.5-pro",
+}
+
+fmt.Println("Model Comparison:\n")
+
+for _, modelID := range modelIDs {
+    model, err := client.Models.Get(ctx, modelID)
+    if err != nil {
+        log.Printf("Error fetching %s: %v\n", modelID, err)
+        continue
+    }
+
+    fmt.Printf("%s:\n", model.ID)
+    fmt.Printf("  Provider: %s\n", model.Provider)
+    fmt.Printf("  Input Limit: %d tokens\n", model.Capabilities.InputTokenLimit)
+    fmt.Printf("  Output Limit: %d tokens\n", model.Capabilities.OutputTokenLimit)
+    fmt.Printf("  Vision: %v\n", model.Capabilities.Vision)
+    fmt.Printf("  Tools: %v\n", model.Capabilities.Tools)
+    fmt.Println()
+}
+```
+
+### Get Provider-Specific Info
+
+```go
+model, err := client.Models.Get(ctx, "openai/gpt-4")
+if err != nil {
+    log.Fatal(err)
+}
+
+fmt.Printf("Model: %s\n\n", model.ID)
+
+if len(model.ProviderInfo) > 0 {
+    fmt.Println("Provider-Specific Information:")
+    for key, value := range model.ProviderInfo {
+        fmt.Printf("  %s: %v\n", key, value)
+    }
+}
+
+if len(model.ProviderDeclaredGenerationMethods) > 0 {
+    fmt.Println("\nGeneration Methods:")
+    for _, method := range model.ProviderDeclaredGenerationMethods {
+        fmt.Printf("  - %s\n", method)
+    }
+}
+```
+
+### Check Model Suitability
+
+```go
+func isModelSuitableForTask(client *dedalus.Client, modelID string, requireVision bool, requireTools bool) (bool, error) {
+    ctx := context.Background()
+    
+    model, err := client.Models.Get(ctx, modelID)
+    if err != nil {
+        return false, err
+    }
+
+    if requireVision && !model.Capabilities.Vision {
+        return false, nil
+    }
+
+    if requireTools && !model.Capabilities.Tools {
+        return false, nil
+    }
+
+    return true, nil
+}
+
+// Usage
+suitable, err := isModelSuitableForTask(
+    client,
+    "openai/gpt-4",
+    true,  // requires vision
+    true,  // requires tools
+)
+
+if err != nil {
+    log.Fatal(err)
+}
+
+if suitable {
+    fmt.Println("Model is suitable for the task")
+} else {
+    fmt.Println("Model does not meet requirements")
+}
+```
+
+## Error Responses
+
+- **401 Unauthorized**: Invalid or missing API key
+- **404 Not Found**: Model not found or not accessible with current API key
+- **500 Internal Server Error**: Unexpected server failure
+
+## Common Model IDs
+
+### OpenAI
+- `openai/gpt-4`
+- `openai/gpt-4-turbo`
+- `openai/gpt-3.5-turbo`
+- `openai/dall-e-3`
+- `openai/whisper-1`
+
+### Anthropic
+- `anthropic/claude-3-5-sonnet-20241022`
+- `anthropic/claude-3-opus-20240229`
+- `anthropic/claude-3-haiku-20240307`
+
+### Google
+- `google/gemini-1.5-pro`
+- `google/gemini-1.5-flash`
+- `google/gemini-2.0-flash-exp`
+
+### Other Providers
+- `xai/grok-beta`
+- `mistral/mistral-large-latest`
+- `groq/llama3-70b-8192`
+- `deepseek/deepseek-chat`
+
+## Use Cases
+
+- Validating model availability before use
+- Checking specific model capabilities
+- Displaying model information in UI
+- Comparing token limits across models
+- Determining if a model supports required features
+- Building model selection logic
+
+## Best Practices
+
+1. **Error Handling**: Always check for errors when retrieving model info
+2. **Capability Checks**: Verify capabilities before using model features
+3. **Token Limits**: Respect input and output token limits
+4. **Caching**: Cache model information to reduce API calls
+5. **Fallback Logic**: Have fallback models if primary model is unavailable

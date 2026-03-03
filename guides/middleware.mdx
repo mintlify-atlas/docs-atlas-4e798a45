@@ -1,0 +1,404 @@
+---
+title: 'Middleware'
+description: 'Intercept and modify HTTP requests and responses using custom middleware'
+---
+
+## Overview
+
+The Dedalus Go SDK supports custom middleware to intercept, modify, and observe HTTP requests and responses. Middleware is useful for logging, authentication, error handling, and request/response transformation.
+
+## What is Middleware?
+
+Middleware is a function that:
+1. Receives an HTTP request
+2. Optionally modifies the request
+3. Passes the request to the next middleware or handler
+4. Receives the HTTP response
+5. Optionally modifies the response
+6. Returns the response
+
+<Info>
+  Middleware executes in the order it's provided, forming a chain where each middleware can pass the request to the next.
+</Info>
+
+## Middleware Function Signature
+
+```go
+import (
+    "net/http"
+    
+    "github.com/dedalus-labs/dedalus-sdk-go/option"
+)
+
+// Middleware function signature
+type Middleware func(
+    req *http.Request,
+    next option.MiddlewareNext,
+) (*http.Response, error)
+
+// MiddlewareNext passes the request to the next middleware
+type MiddlewareNext func(*http.Request) (*http.Response, error)
+```
+
+## Basic Example: Logging Middleware
+
+```go
+import (
+    "log"
+    "net/http"
+    "time"
+    
+    "github.com/dedalus-labs/dedalus-sdk-go"
+    "github.com/dedalus-labs/dedalus-sdk-go/option"
+)
+
+func Logger(req *http.Request, next option.MiddlewareNext) (*http.Response, error) {
+    // Before the request
+    start := time.Now()
+    log.Printf("[REQUEST] %s %s", req.Method, req.URL.Path)
+    
+    // Forward the request to the next handler
+    res, err := next(req)
+    
+    // After the request
+    duration := time.Since(start)
+    if err != nil {
+        log.Printf("[ERROR] %s %s - %v (took %v)", req.Method, req.URL.Path, err, duration)
+    } else {
+        log.Printf("[RESPONSE] %s %s - %d (took %v)", req.Method, req.URL.Path, res.StatusCode, duration)
+    }
+    
+    return res, err
+}
+
+func main() {
+    client := githubcomdedaluslabsdedalussdkgo.NewClient(
+        option.WithAPIKey("your-api-key"),
+        option.WithMiddleware(Logger),
+    )
+    
+    // All requests will be logged
+    models, _ := client.Models.List(context.TODO())
+}
+```
+
+<Tip>
+  The `Logger` middleware logs both successful and failed requests with timing information.
+</Tip>
+
+## Client-Level Middleware
+
+Apply middleware to all requests made by the client:
+
+```go
+client := githubcomdedaluslabsdedalussdkgo.NewClient(
+    option.WithAPIKey("your-api-key"),
+    option.WithMiddleware(Logger, RateLimiter, ErrorHandler),
+)
+```
+
+<Info>
+  Middleware executes in the order provided: `Logger` → `RateLimiter` → `ErrorHandler` → HTTP request
+</Info>
+
+## Per-Request Middleware
+
+Override or add middleware for specific requests:
+
+```go
+// Client has Logger middleware
+client := githubcomdedaluslabsdedalussdkgo.NewClient(
+    option.WithAPIKey("your-api-key"),
+    option.WithMiddleware(Logger),
+)
+
+// This request adds CustomAuth middleware
+models, err := client.Models.List(
+    context.TODO(),
+    option.WithMiddleware(CustomAuth),
+)
+```
+
+<Warning>
+  Per-request middleware executes **after** client-level middleware in the chain.
+</Warning>
+
+## Common Middleware Patterns
+
+### 1. Authentication Middleware
+
+```go
+func CustomAuth(req *http.Request, next option.MiddlewareNext) (*http.Response, error) {
+    // Add custom authentication header
+    req.Header.Set("X-Custom-Token", "my-secret-token")
+    
+    // Forward request
+    return next(req)
+}
+```
+
+### 2. Request ID Middleware
+
+```go
+import "github.com/google/uuid"
+
+func RequestID(req *http.Request, next option.MiddlewareNext) (*http.Response, error) {
+    // Generate and attach request ID
+    requestID := uuid.New().String()
+    req.Header.Set("X-Request-ID", requestID)
+    
+    log.Printf("[%s] Starting request: %s %s", requestID, req.Method, req.URL.Path)
+    
+    res, err := next(req)
+    
+    log.Printf("[%s] Completed request", requestID)
+    
+    return res, err
+}
+```
+
+### 3. Retry Middleware
+
+```go
+import (
+    "errors"
+    "time"
+)
+
+func RetryOn5xx(req *http.Request, next option.MiddlewareNext) (*http.Response, error) {
+    maxRetries := 3
+    backoff := 1 * time.Second
+    
+    var res *http.Response
+    var err error
+    
+    for i := 0; i < maxRetries; i++ {
+        res, err = next(req)
+        
+        // Success or non-5xx error
+        if err == nil && res.StatusCode < 500 {
+            return res, nil
+        }
+        
+        // Retry with backoff
+        if i < maxRetries-1 {
+            time.Sleep(backoff)
+            backoff *= 2 // Exponential backoff
+        }
+    }
+    
+    return res, err
+}
+```
+
+### 4. Response Caching Middleware
+
+```go
+import (
+    "bytes"
+    "io"
+    "sync"
+)
+
+type Cache struct {
+    mu    sync.RWMutex
+    store map[string]*http.Response
+}
+
+func (c *Cache) Middleware(req *http.Request, next option.MiddlewareNext) (*http.Response, error) {
+    // Only cache GET requests
+    if req.Method != http.MethodGet {
+        return next(req)
+    }
+    
+    cacheKey := req.URL.String()
+    
+    // Check cache
+    c.mu.RLock()
+    if cached, ok := c.store[cacheKey]; ok {
+        c.mu.RUnlock()
+        log.Printf("[CACHE HIT] %s", cacheKey)
+        return cached, nil
+    }
+    c.mu.RUnlock()
+    
+    // Not in cache, make request
+    res, err := next(req)
+    if err != nil || res.StatusCode != 200 {
+        return res, err
+    }
+    
+    // Store in cache
+    c.mu.Lock()
+    c.store[cacheKey] = res
+    c.mu.Unlock()
+    
+    log.Printf("[CACHE MISS] %s", cacheKey)
+    
+    return res, nil
+}
+```
+
+### 5. Error Handling Middleware
+
+```go
+import "github.com/dedalus-labs/dedalus-sdk-go"
+
+func ErrorHandler(req *http.Request, next option.MiddlewareNext) (*http.Response, error) {
+    res, err := next(req)
+    
+    if err != nil {
+        // Handle specific error types
+        var apiErr *githubcomdedaluslabsdedalussdkgo.Error
+        if errors.As(err, &apiErr) {
+            switch apiErr.StatusCode {
+            case 401:
+                log.Println("Authentication failed - check API key")
+            case 429:
+                log.Println("Rate limit exceeded - backing off")
+            case 500:
+                log.Println("Server error - retrying may help")
+            }
+        }
+    }
+    
+    return res, err
+}
+```
+
+## Built-in Middleware
+
+The SDK provides a debug logging middleware:
+
+```go
+import (
+    "log"
+    
+    "github.com/dedalus-labs/dedalus-sdk-go"
+    "github.com/dedalus-labs/dedalus-sdk-go/option"
+)
+
+client := githubcomdedaluslabsdedalussdkgo.NewClient(
+    option.WithAPIKey("your-api-key"),
+    option.WithDebugLog(log.Default()), // Built-in debug middleware
+)
+```
+
+<Warning>
+  `WithDebugLog` is for **development purposes only** and should not be used in production. It logs full request and response bodies, including sensitive data.
+</Warning>
+
+## Complete Example
+
+```go
+package main
+
+import (
+    "context"
+    "log"
+    "net/http"
+    "time"
+    
+    "github.com/dedalus-labs/dedalus-sdk-go"
+    "github.com/dedalus-labs/dedalus-sdk-go/option"
+    "github.com/google/uuid"
+)
+
+// Request ID middleware
+func RequestID(req *http.Request, next option.MiddlewareNext) (*http.Response, error) {
+    requestID := uuid.New().String()
+    req.Header.Set("X-Request-ID", requestID)
+    
+    log.Printf("[%s] → %s %s", requestID, req.Method, req.URL.Path)
+    
+    res, err := next(req)
+    
+    if err != nil {
+        log.Printf("[%s] ✗ Error: %v", requestID, err)
+    } else {
+        log.Printf("[%s] ✓ %d", requestID, res.StatusCode)
+    }
+    
+    return res, err
+}
+
+// Timing middleware
+func Timer(req *http.Request, next option.MiddlewareNext) (*http.Response, error) {
+    start := time.Now()
+    
+    res, err := next(req)
+    
+    duration := time.Since(start)
+    log.Printf("⏱️  Request took %v", duration)
+    
+    return res, err
+}
+
+// Custom header middleware
+func CustomHeaders(req *http.Request, next option.MiddlewareNext) (*http.Response, error) {
+    req.Header.Set("X-App-Version", "1.0.0")
+    req.Header.Set("X-Environment", "production")
+    
+    return next(req)
+}
+
+func main() {
+    client := githubcomdedaluslabsdedalussdkgo.NewClient(
+        option.WithAPIKey("your-api-key"),
+        option.WithMiddleware(
+            RequestID,      // First: Add request ID
+            Timer,          // Second: Time the request
+            CustomHeaders,  // Third: Add custom headers
+        ),
+    )
+    
+    // Make a request - all middleware will execute
+    models, err := client.Models.List(context.TODO())
+    if err != nil {
+        log.Fatalf("Failed to list models: %v", err)
+    }
+    
+    log.Printf("Found %d models", len(models.Data))
+}
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Order Matters" icon="list-ol">
+    Middleware executes in the order provided. Place authentication before logging to avoid logging auth tokens.
+  </Card>
+  
+  <Card title="Always Call Next" icon="arrow-right">
+    Always call `next(req)` to continue the middleware chain, unless you want to short-circuit the request.
+  </Card>
+  
+  <Card title="Handle Errors" icon="shield-exclamation">
+    Check for errors returned by `next()` and handle them appropriately.
+  </Card>
+  
+  <Card title="Keep It Light" icon="feather">
+    Middleware executes on every request. Keep middleware logic fast to avoid slowing down all requests.
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Middleware Not Executing">
+    - Verify you're using `option.WithMiddleware()` correctly
+    - Check that you're calling `next(req)` to continue the chain
+    - Ensure middleware is applied to the client or request
+  </Accordion>
+  
+  <Accordion title="Wrong Execution Order">
+    - Middleware executes in the order provided to `WithMiddleware()`
+    - Client middleware runs before per-request middleware
+    - Review your middleware chain order
+  </Accordion>
+  
+  <Accordion title="Request Modified Unexpectedly">
+    - Check all middleware in the chain for request modifications
+    - Middleware higher in the chain can modify requests for downstream middleware
+  </Accordion>
+</AccordionGroup>

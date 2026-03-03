@@ -1,0 +1,137 @@
+---
+title: Introduction
+description: Build powerful AI applications with the Dedalus Go SDK
+---
+
+<img
+  className="block dark:hidden"
+  src="/images/hero-light.png"
+  alt="Hero Light"
+/>
+<img
+  className="hidden dark:block"
+  src="/images/hero-dark.png"
+  alt="Hero Dark"
+/>
+
+## Overview
+
+The Dedalus Go SDK provides convenient access to the [Dedalus REST API](https://docs.dedaluslabs.ai) from applications written in Go. Built with [Stainless](https://www.stainless.com/), it offers a type-safe, idiomatic Go interface for interacting with AI models and services.
+
+<CardGroup cols={2}>
+  <Card
+    title="Quickstart"
+    icon="rocket"
+    href="/quickstart"
+  >
+    Get started with your first chat completion in minutes
+  </Card>
+  <Card
+    title="Installation"
+    icon="download"
+    href="/installation"
+  >
+    Install the SDK and set up your development environment
+  </Card>
+</CardGroup>
+
+## Key Features
+
+<AccordionGroup>
+  <Accordion title="Chat Completions" icon="messages">
+    Create conversational AI experiences with support for streaming responses, system messages, and multi-turn conversations.
+  </Accordion>
+  
+  <Accordion title="Text Embeddings" icon="vector-square">
+    Generate vector embeddings for text inputs to power semantic search, clustering, and recommendation systems.
+  </Accordion>
+  
+  <Accordion title="Audio Processing" icon="waveform">
+    Comprehensive audio capabilities including speech synthesis (text-to-speech), transcription (speech-to-text), and audio translation.
+  </Accordion>
+  
+  <Accordion title="Image Generation" icon="image">
+    Create, edit, and generate variations of images using powerful AI models.
+  </Accordion>
+  
+  <Accordion title="Model Management" icon="server">
+    List available models and retrieve detailed information about model capabilities and configurations.
+  </Accordion>
+  
+  <Accordion title="Type-Safe Parameters" icon="shield-check">
+    Use generic Field types to distinguish between zero values, null values, and omitted fields, preventing accidental errors.
+  </Accordion>
+  
+  <Accordion title="Automatic Retry" icon="arrows-rotate">
+    Built-in retry logic with exponential backoff for connection errors, timeouts, and rate limits.
+  </Accordion>
+  
+  <Accordion title="Middleware Support" icon="plug">
+    Add custom request/response handling with middleware for logging, monitoring, and request modification.
+  </Accordion>
+  
+  <Accordion title="Multiple Environments" icon="layer-group">
+    Switch between production and development environments with simple configuration options.
+  </Accordion>
+  
+  <Accordion title="File Upload Handling" icon="file-arrow-up">
+    Seamless file upload support for audio transcription, image generation, and other file-based operations.
+  </Accordion>
+</AccordionGroup>
+
+## OpenAI Compatible
+
+The Dedalus SDK maintains full compatibility with OpenAI API standards while providing additional Dedalus-specific features like server-side tool execution and MCP error reporting.
+
+## Quick Example
+
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/dedalus-labs/dedalus-sdk-go"
+	"github.com/dedalus-labs/dedalus-sdk-go/option"
+	"github.com/dedalus-labs/dedalus-sdk-go/shared"
+)
+
+func main() {
+	client := githubcomdedaluslabsdedalussdkgo.NewClient(
+		option.WithAPIKey("My API Key"),
+	)
+	chatCompletion, err := client.Chat.Completions.New(context.TODO(), githubcomdedaluslabsdedalussdkgo.ChatCompletionNewParams{
+		Model: githubcomdedaluslabsdedalussdkgo.F[githubcomdedaluslabsdedalussdkgo.ChatCompletionNewParamsModelUnion](shared.UnionString("openai/gpt-5-nano")),
+		Messages: githubcomdedaluslabsdedalussdkgo.F([]githubcomdedaluslabsdedalussdkgo.ChatCompletionNewParamsMessageUnion{
+			githubcomdedaluslabsdedalussdkgo.ChatCompletionUserMessageParam{
+				Role:    githubcomdedaluslabsdedalussdkgo.F(githubcomdedaluslabsdedalussdkgo.ChatCompletionUserMessageParamRoleUser),
+				Content: githubcomdedaluslabsdedalussdkgo.F[githubcomdedaluslabsdedalussdkgo.ChatCompletionUserMessageParamContentUnion](shared.UnionString("Hello!")),
+			},
+		}),
+	})
+	if err != nil {
+		panic(err.Error())
+	}
+	fmt.Printf("%+v\n", chatCompletion.ID)
+}
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card
+    title="API Reference"
+    icon="book"
+    href="https://pkg.go.dev/github.com/dedalus-labs/dedalus-sdk-go"
+  >
+    Explore the complete API documentation
+  </Card>
+  <Card
+    title="GitHub Repository"
+    icon="github"
+    href="https://github.com/dedalus-labs/dedalus-sdk-go"
+  >
+    View source code and contribute
+  </Card>
+</CardGroup>

@@ -1,0 +1,448 @@
+---
+title: 'Streaming'
+description: 'Handle streaming chat completions and real-time responses with the Dedalus Go SDK'
+---
+
+## Overview
+
+The Dedalus Go SDK supports streaming responses for chat completions, allowing you to receive and process tokens as they are generated in real-time. This is useful for building interactive applications with immediate feedback.
+
+## Streaming vs Non-Streaming
+
+<CardGroup cols={2}>
+  <Card title="Non-Streaming" icon="file">
+    Receive the complete response after all tokens are generated.
+    
+    **Use for:** Batch processing, complete responses needed upfront
+  </Card>
+  
+  <Card title="Streaming" icon="satellite-dish">
+    Receive incremental deltas as tokens are generated.
+    
+    **Use for:** Interactive UIs, real-time chat, progressive rendering
+  </Card>
+</CardGroup>
+
+## Basic Streaming Example
+
+```go
+import (
+    "context"
+    "fmt"
+    
+    "github.com/dedalus-labs/dedalus-sdk-go"
+    "github.com/dedalus-labs/dedalus-sdk-go/option"
+    "github.com/dedalus-labs/dedalus-sdk-go/shared"
+)
+
+func main() {
+    client := githubcomdedaluslabsdedalussdkgo.NewClient(
+        option.WithAPIKey("your-api-key"),
+    )
+    
+    // Create streaming request
+    stream := client.Chat.Completions.NewStreaming(
+        context.TODO(),
+        githubcomdedaluslabsdedalussdkgo.ChatCompletionNewParams{
+            Model: githubcomdedaluslabsdedalussdkgo.F[
+                githubcomdedaluslabsdedalussdkgo.ChatCompletionNewParamsModelUnion
+            ](shared.UnionString("openai/gpt-4")),
+            Messages: githubcomdedaluslabsdedalussdkgo.F(
+                []githubcomdedaluslabsdedalussdkgo.ChatCompletionNewParamsMessageUnion{
+                    githubcomdedaluslabsdedalussdkgo.ChatCompletionUserMessageParam{
+                        Role: githubcomdedaluslabsdedalussdkgo.F(
+                            githubcomdedaluslabsdedalussdkgo.ChatCompletionUserMessageParamRoleUser,
+                        ),
+                        Content: githubcomdedaluslabsdedalussdkgo.F[
+                            githubcomdedaluslabsdedalussdkgo.ChatCompletionUserMessageParamContentUnion
+                        ](shared.UnionString("Tell me a story about a brave knight.")),
+                    },
+                },
+            ),
+        },
+    )
+    
+    // Process stream chunks
+    for stream.Next() {
+        chunk := stream.Current()
+        
+        // Extract content from the first choice
+        if len(chunk.Choices) > 0 {
+            delta := chunk.Choices[0].Delta
+            if delta.Content != "" {
+                fmt.Print(delta.Content)
+            }
+        }
+    }
+    
+    // Check for errors
+    if err := stream.Err(); err != nil {
+        panic(err.Error())
+    }
+    
+    fmt.Println() // New line after streaming
+}
+```
+
+<Info>
+  Streaming uses Server-Sent Events (SSE) to deliver incremental chunks. Each chunk contains a delta with new content.
+</Info>
+
+## Stream Iteration
+
+<Steps>
+  <Step title="Create Stream">
+    Call `NewStreaming()` instead of `New()` to create a streaming request:
+    
+    ```go
+    stream := client.Chat.Completions.NewStreaming(ctx, params)
+    ```
+  </Step>
+  
+  <Step title="Iterate Chunks">
+    Use `Next()` to iterate through chunks:
+    
+    ```go
+    for stream.Next() {
+        chunk := stream.Current()
+        // Process chunk
+    }
+    ```
+  </Step>
+  
+  <Step title="Check for Errors">
+    Always check for errors after iteration:
+    
+    ```go
+    if err := stream.Err(); err != nil {
+        // Handle error
+    }
+    ```
+  </Step>
+</Steps>
+
+## Stream Response Structure
+
+Each streaming chunk is a `ChatCompletionChunk` with the following structure:
+
+```go
+type ChatCompletionChunk struct {
+    ID      string                        // Completion ID (same for all chunks)
+    Object  string                        // "chat.completion.chunk"
+    Created int64                         // Unix timestamp
+    Model   string                        // Model used
+    Choices []ChatCompletionChunkChoice   // Streaming choices
+    Usage   CompletionUsage               // Token usage (only in last chunk)
+}
+
+type ChatCompletionChunkChoice struct {
+    Index        int64       // Choice index
+    Delta        ChoiceDelta // Incremental content
+    FinishReason string      // Reason for completion (only in last chunk)
+}
+
+type ChoiceDelta struct {
+    Role       string                        // Role (only in first chunk)
+    Content    string                        // Incremental content
+    ToolCalls  []ChatCompletionMessageToolCall // Tool calls (if any)
+}
+```
+
+## Handling Different Chunk Types
+
+### Content Chunks
+
+Most chunks contain incremental content:
+
+```go
+for stream.Next() {
+    chunk := stream.Current()
+    
+    for _, choice := range chunk.Choices {
+        if choice.Delta.Content != "" {
+            fmt.Print(choice.Delta.Content)
+        }
+    }
+}
+```
+
+### First Chunk
+
+The first chunk may include the role:
+
+```go
+for stream.Next() {
+    chunk := stream.Current()
+    
+    for _, choice := range chunk.Choices {
+        delta := choice.Delta
+        
+        // First chunk may have role
+        if delta.Role != "" {
+            fmt.Printf("[Role: %s]\n", delta.Role)
+        }
+        
+        // Subsequent chunks have content
+        if delta.Content != "" {
+            fmt.Print(delta.Content)
+        }
+    }
+}
+```
+
+### Last Chunk
+
+The final chunk includes the finish reason and usage stats:
+
+```go
+for stream.Next() {
+    chunk := stream.Current()
+    
+    for _, choice := range chunk.Choices {
+        // Process content
+        if choice.Delta.Content != "" {
+            fmt.Print(choice.Delta.Content)
+        }
+        
+        // Check for completion
+        if choice.FinishReason != "" {
+            fmt.Printf("\n[Finished: %s]\n", choice.FinishReason)
+        }
+    }
+    
+    // Usage information (last chunk only)
+    if chunk.Usage.TotalTokens > 0 {
+        fmt.Printf("Tokens used: %d\n", chunk.Usage.TotalTokens)
+    }
+}
+```
+
+## Complete Streaming Example
+
+```go
+package main
+
+import (
+    "context"
+    "fmt"
+    "strings"
+    
+    "github.com/dedalus-labs/dedalus-sdk-go"
+    "github.com/dedalus-labs/dedalus-sdk-go/option"
+    "github.com/dedalus-labs/dedalus-sdk-go/shared"
+)
+
+func main() {
+    client := githubcomdedaluslabsdedalussdkgo.NewClient(
+        option.WithAPIKey("your-api-key"),
+    )
+    
+    fmt.Println("Streaming chat completion...")
+    fmt.Println(strings.Repeat("=", 50))
+    
+    stream := client.Chat.Completions.NewStreaming(
+        context.TODO(),
+        githubcomdedaluslabsdedalussdkgo.ChatCompletionNewParams{
+            Model: githubcomdedaluslabsdedalussdkgo.F[
+                githubcomdedaluslabsdedalussdkgo.ChatCompletionNewParamsModelUnion
+            ](shared.UnionString("openai/gpt-4")),
+            Messages: githubcomdedaluslabsdedalussdkgo.F(
+                []githubcomdedaluslabsdedalussdkgo.ChatCompletionNewParamsMessageUnion{
+                    githubcomdedaluslabsdedalussdkgo.ChatCompletionSystemMessageParam{
+                        Role: githubcomdedaluslabsdedalussdkgo.F(
+                            githubcomdedaluslabsdedalussdkgo.ChatCompletionSystemMessageParamRoleSystem,
+                        ),
+                        Content: githubcomdedaluslabsdedalussdkgo.F[
+                            githubcomdedaluslabsdedalussdkgo.ChatCompletionSystemMessageParamContentUnion
+                        ](shared.UnionString("You are a helpful assistant.")),
+                    },
+                    githubcomdedaluslabsdedalussdkgo.ChatCompletionUserMessageParam{
+                        Role: githubcomdedaluslabsdedalussdkgo.F(
+                            githubcomdedaluslabsdedalussdkgo.ChatCompletionUserMessageParamRoleUser,
+                        ),
+                        Content: githubcomdedaluslabsdedalussdkgo.F[
+                            githubcomdedaluslabsdedalussdkgo.ChatCompletionUserMessageParamContentUnion
+                        ](shared.UnionString("Explain quantum computing in simple terms.")),
+                    },
+                },
+            ),
+        },
+    )
+    
+    var fullResponse strings.Builder
+    chunkCount := 0
+    
+    for stream.Next() {
+        chunk := stream.Current()
+        chunkCount++
+        
+        for _, choice := range chunk.Choices {
+            delta := choice.Delta
+            
+            // Accumulate content
+            if delta.Content != "" {
+                fmt.Print(delta.Content)
+                fullResponse.WriteString(delta.Content)
+            }
+            
+            // Check for finish
+            if choice.FinishReason != "" {
+                fmt.Printf("\n\n[Finish Reason: %s]\n", choice.FinishReason)
+            }
+        }
+        
+        // Show usage in last chunk
+        if chunk.Usage.TotalTokens > 0 {
+            fmt.Printf("\n[Usage]\n")
+            fmt.Printf("  Prompt tokens: %d\n", chunk.Usage.PromptTokens)
+            fmt.Printf("  Completion tokens: %d\n", chunk.Usage.CompletionTokens)
+            fmt.Printf("  Total tokens: %d\n", chunk.Usage.TotalTokens)
+        }
+    }
+    
+    if err := stream.Err(); err != nil {
+        panic(err.Error())
+    }
+    
+    fmt.Println(strings.Repeat("=", 50))
+    fmt.Printf("Received %d chunks\n", chunkCount)
+    fmt.Printf("Full response length: %d characters\n", fullResponse.Len())
+}
+```
+
+## Streaming with Tool Calls
+
+Streaming also works with function/tool calls:
+
+```go
+stream := client.Chat.Completions.NewStreaming(
+    context.TODO(),
+    githubcomdedaluslabsdedalussdkgo.ChatCompletionNewParams{
+        Model: githubcomdedaluslabsdedalussdkgo.F[
+            githubcomdedaluslabsdedalussdkgo.ChatCompletionNewParamsModelUnion
+        ](shared.UnionString("openai/gpt-4")),
+        Messages: messages,
+        Tools:    tools, // Include tool definitions
+    },
+)
+
+for stream.Next() {
+    chunk := stream.Current()
+    
+    for _, choice := range chunk.Choices {
+        // Check for tool calls in delta
+        if len(choice.Delta.ToolCalls) > 0 {
+            for _, toolCall := range choice.Delta.ToolCalls {
+                fmt.Printf("Tool call: %s\n", toolCall.Function.Name)
+                fmt.Printf("Arguments: %s\n", toolCall.Function.Arguments)
+            }
+        }
+    }
+}
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Buffer Output" icon="memory">
+    Accumulate chunks before displaying to avoid excessive UI updates.
+  </Card>
+  
+  <Card title="Handle Errors" icon="triangle-exclamation">
+    Always check `stream.Err()` after iteration to catch network errors.
+  </Card>
+  
+  <Card title="Use Context" icon="clock">
+    Provide a context with timeout to avoid infinite streaming.
+  </Card>
+  
+  <Card title="Show Progress" icon="spinner">
+    Display a loading indicator or partial results to improve UX.
+  </Card>
+</CardGroup>
+
+## Advanced Patterns
+
+### Streaming with Timeout
+
+```go
+import (
+    "context"
+    "time"
+)
+
+ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+defer cancel()
+
+stream := client.Chat.Completions.NewStreaming(ctx, params)
+
+for stream.Next() {
+    chunk := stream.Current()
+    // Process chunk
+}
+
+if err := stream.Err(); err != nil {
+    if ctx.Err() == context.DeadlineExceeded {
+        fmt.Println("Streaming timed out")
+    } else {
+        fmt.Printf("Error: %v\n", err)
+    }
+}
+```
+
+### Streaming to Channel
+
+```go
+func streamToChannel(client *githubcomdedaluslabsdedalussdkgo.Client, params Params) <-chan string {
+    ch := make(chan string)
+    
+    go func() {
+        defer close(ch)
+        
+        stream := client.Chat.Completions.NewStreaming(context.TODO(), params)
+        
+        for stream.Next() {
+            chunk := stream.Current()
+            
+            for _, choice := range chunk.Choices {
+                if choice.Delta.Content != "" {
+                    ch <- choice.Delta.Content
+                }
+            }
+        }
+        
+        if err := stream.Err(); err != nil {
+            ch <- fmt.Sprintf("[ERROR: %v]", err)
+        }
+    }()
+    
+    return ch
+}
+
+// Usage
+for content := range streamToChannel(client, params) {
+    fmt.Print(content)
+}
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Stream Never Completes">
+    - Set a context with timeout
+    - Check network connectivity
+    - Verify the model supports streaming
+  </Accordion>
+  
+  <Accordion title="Missing Content">
+    - Ensure you're checking all choices in the chunk
+    - Verify you're not missing the first or last chunk
+    - Check that `Delta.Content` is not empty before skipping
+  </Accordion>
+  
+  <Accordion title="Garbled Output">
+    - Some tokens may be partial UTF-8 sequences
+    - Buffer content before displaying
+    - Use proper string concatenation
+  </Accordion>
+</AccordionGroup>

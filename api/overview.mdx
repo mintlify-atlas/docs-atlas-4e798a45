@@ -1,0 +1,94 @@
+---
+title: 'API Overview'
+description: 'Overview of the Dedalus Go SDK API structure and available services'
+---
+
+## Client Structure
+
+The Dedalus Go SDK provides a unified client for accessing AI models across multiple providers including OpenAI, Anthropic, Google, xAI, Mistral, Groq, Fireworks, and DeepSeek.
+
+```go
+import (
+    "github.com/dedalus-labs/dedalus-sdk-go"
+    "github.com/dedalus-labs/dedalus-sdk-go/option"
+)
+
+client := githubcomdedaluslabsdedalussdkgo.NewClient(
+    option.WithAPIKey("your-api-key"),
+)
+```
+
+## Available Services
+
+The SDK is organized into the following service areas:
+
+### Chat
+
+Generate conversational responses with support for streaming, function calling, and multimodal inputs.
+
+- **Completions** - Create chat completions with streaming support
+
+### Embeddings
+
+Create vector embeddings for text inputs using various embedding models.
+
+- **Create** - Generate embeddings for text
+
+### Audio
+
+Process and generate audio content.
+
+- **Speech** - Generate speech audio from text (text-to-speech)
+- **Transcriptions** - Transcribe audio files to text
+- **Translations** - Translate audio to English text
+
+### Images
+
+Generate and manipulate images using AI models.
+
+- **Generate** - Create images from text prompts
+- **Edit** - Edit images using inpainting
+- **Variations** - Create variations of existing images
+
+### Models
+
+Retrieve information about available models.
+
+- **List** - Get all available models
+- **Get** - Retrieve details about a specific model
+
+## Authentication
+
+All API requests require authentication using an API key:
+
+```go
+client := githubcomdedaluslabsdedalussdkgo.NewClient(
+    option.WithAPIKey("your-api-key"),
+)
+```
+
+## Error Handling
+
+The SDK returns standard Go errors. Check for errors after each API call:
+
+```go
+response, err := client.Chat.Completions.New(ctx, params)
+if err != nil {
+    // Handle error
+    log.Fatal(err)
+}
+```
+
+## Rate Limits
+
+API endpoints are subject to rate limits based on your account tier. Handle rate limit errors appropriately:
+
+- **429 Too Many Requests**: Rate limit exceeded
+- **402 Payment Required**: Quota or balance issue
+
+## Best Practices
+
+1. **Context Management**: Always pass a context to API calls for timeout and cancellation support
+2. **Error Handling**: Check and handle errors for all API calls
+3. **Streaming**: Use streaming for real-time responses when appropriate
+4. **Resource Cleanup**: Close streaming connections properly

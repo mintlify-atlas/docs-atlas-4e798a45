@@ -1,0 +1,383 @@
+---
+title: 'File Uploads'
+description: 'Upload audio, images, and other files using the Dedalus Go SDK'
+---
+
+## Overview
+
+The Dedalus Go SDK supports file uploads for various endpoints, including audio transcription, audio translation, and image generation. File parameters are typed as `param.Field[io.Reader]` and support multiple input sources.
+
+## File Upload Basics
+
+Request parameters that accept files are typed as `param.Field[io.Reader]`. The SDK automatically handles:
+
+- Multipart form encoding
+- Content-Type detection
+- Filename extraction
+
+## Upload from File System
+
+The most common way to upload a file is from the local file system:
+
+```go
+import (
+    "context"
+    "os"
+    
+    "github.com/dedalus-labs/dedalus-sdk-go"
+    "github.com/dedalus-labs/dedalus-sdk-go/option"
+)
+
+func main() {
+    client := githubcomdedaluslabsdedalussdkgo.NewClient(
+        option.WithAPIKey("your-api-key"),
+    )
+    
+    // Open file from disk
+    file, err := os.Open("/path/to/audio.mp3")
+    if err != nil {
+        panic(err.Error())
+    }
+    defer file.Close()
+    
+    // Upload for transcription
+    transcription, err := client.Audio.Transcriptions.New(
+        context.TODO(),
+        githubcomdedaluslabsdedalussdkgo.AudioTranscriptionNewParams{
+            File:  githubcomdedaluslabsdedalussdkgo.F[io.Reader](file),
+            Model: githubcomdedaluslabsdedalussdkgo.F("whisper-1"),
+        },
+    )
+    
+    if err != nil {
+        panic(err.Error())
+    }
+}
+```
+
+<Info>
+  When using `os.File`, the SDK automatically extracts the filename from the file path and uses it in the multipart form data.
+</Info>
+
+## Upload from String/Bytes
+
+Upload file content from a string or byte slice:
+
+```go
+import (
+    "context"
+    "strings"
+    
+    "github.com/dedalus-labs/dedalus-sdk-go"
+)
+
+// From a string
+fileContent := "audio data here"
+
+transcription, err := client.Audio.Transcriptions.New(
+    context.TODO(),
+    githubcomdedaluslabsdedalussdkgo.AudioTranscriptionNewParams{
+        File:  githubcomdedaluslabsdedalussdkgo.F[io.Reader](strings.NewReader(fileContent)),
+        Model: githubcomdedaluslabsdedalussdkgo.F("whisper-1"),
+    },
+)
+```
+
+With bytes:
+
+```go
+import "bytes"
+
+fileBytes := []byte("audio data")
+
+transcription, err := client.Audio.Transcriptions.New(
+    context.TODO(),
+    githubcomdedaluslabsdedalussdkgo.AudioTranscriptionNewParams{
+        File:  githubcomdedaluslabsdedalussdkgo.F[io.Reader](bytes.NewReader(fileBytes)),
+        Model: githubcomdedaluslabsdedalussdkgo.F("whisper-1"),
+    },
+)
+```
+
+<Warning>
+  When uploading from strings or bytes, the filename defaults to `"anonymous_file"` and content-type to `"application/octet-stream"` unless specified.
+</Warning>
+
+## Custom Filename and Content-Type
+
+Use the `FileParam` helper to specify custom filename and content-type:
+
+```go
+import (
+    "context"
+    "strings"
+    
+    "github.com/dedalus-labs/dedalus-sdk-go"
+)
+
+fileContent := strings.NewReader(`{"hello": "world"}`)
+
+transcription, err := client.Audio.Transcriptions.New(
+    context.TODO(),
+    githubcomdedaluslabsdedalussdkgo.AudioTranscriptionNewParams{
+        File: githubcomdedaluslabsdedalussdkgo.FileParam(
+            fileContent,
+            "custom-audio.mp3",     // custom filename
+            "audio/mpeg",            // custom content-type
+        ),
+        Model: githubcomdedaluslabsdedalussdkgo.F("whisper-1"),
+    },
+)
+```
+
+<Tip>
+  The `FileParam` helper wraps any `io.Reader` with custom filename and content-type metadata.
+</Tip>
+
+## Audio File Uploads
+
+### Audio Transcription
+
+<Steps>
+  <Step title="Prepare Audio File">
+    Ensure your audio file is in a supported format (MP3, WAV, M4A, etc.):
+    
+    ```go
+    file, err := os.Open("/path/to/meeting-recording.mp3")
+    if err != nil {
+        panic(err.Error())
+    }
+    defer file.Close()
+    ```
+  </Step>
+  
+  <Step title="Create Transcription Request">
+    ```go
+    transcription, err := client.Audio.Transcriptions.New(
+        context.TODO(),
+        githubcomdedaluslabsdedalussdkgo.AudioTranscriptionNewParams{
+            File:  githubcomdedaluslabsdedalussdkgo.F[io.Reader](file),
+            Model: githubcomdedaluslabsdedalussdkgo.F("whisper-1"),
+        },
+    )
+    ```
+  </Step>
+  
+  <Step title="Handle Response">
+    ```go
+    if err != nil {
+        panic(err.Error())
+    }
+    
+    fmt.Printf("Transcription: %s\n", transcription.Text)
+    ```
+  </Step>
+</Steps>
+
+### Audio Translation
+
+Translate audio from another language to English:
+
+```go
+file, err := os.Open("/path/to/spanish-audio.mp3")
+if err != nil {
+    panic(err.Error())
+}
+defer file.Close()
+
+translation, err := client.Audio.Translations.New(
+    context.TODO(),
+    githubcomdedaluslabsdedalussdkgo.AudioTranslationNewParams{
+        File:  githubcomdedaluslabsdedalussdkgo.F[io.Reader](file),
+        Model: githubcomdedaluslabsdedalussdkgo.F("whisper-1"),
+    },
+)
+
+if err != nil {
+    panic(err.Error())
+}
+
+fmt.Printf("Translation: %s\n", translation.Text)
+```
+
+## Image Uploads
+
+Upload images for vision models:
+
+```go
+import (
+    "context"
+    "encoding/base64"
+    "os"
+    
+    "github.com/dedalus-labs/dedalus-sdk-go"
+    "github.com/dedalus-labs/dedalus-sdk-go/shared"
+)
+
+// Option 1: Upload image file directly
+file, err := os.Open("/path/to/image.jpg")
+if err != nil {
+    panic(err.Error())
+}
+defer file.Close()
+
+// Read file contents
+imageBytes, err := io.ReadAll(file)
+if err != nil {
+    panic(err.Error())
+}
+
+// Base64 encode
+imageBase64 := base64.StdEncoding.EncodeToString(imageBytes)
+
+// Use in chat completion with image URL
+chatCompletion, err := client.Chat.Completions.New(
+    context.TODO(),
+    githubcomdedaluslabsdedalussdkgo.ChatCompletionNewParams{
+        Model: githubcomdedaluslabsdedalussdkgo.F[
+            githubcomdedaluslabsdedalussdkgo.ChatCompletionNewParamsModelUnion
+        ](shared.UnionString("openai/gpt-4-vision")),
+        Messages: githubcomdedaluslabsdedalussdkgo.F(
+            []githubcomdedaluslabsdedalussdkgo.ChatCompletionNewParamsMessageUnion{
+                githubcomdedaluslabsdedalussdkgo.ChatCompletionUserMessageParam{
+                    Role: githubcomdedaluslabsdedalussdkgo.F(
+                        githubcomdedaluslabsdedalussdkgo.ChatCompletionUserMessageParamRoleUser,
+                    ),
+                    Content: githubcomdedaluslabsdedalussdkgo.F[
+                        githubcomdedaluslabsdedalussdkgo.ChatCompletionUserMessageParamContentUnion
+                    ](
+                        githubcomdedaluslabsdedalussdkgo.ChatCompletionUserMessageParamContentChatCompletionRequestUserMessageContentArray{
+                            githubcomdedaluslabsdedalussdkgo.ChatCompletionContentPartTextParam{
+                                Type: githubcomdedaluslabsdedalussdkgo.F(
+                                    githubcomdedaluslabsdedalussdkgo.ChatCompletionContentPartTextParamTypeText,
+                                ),
+                                Text: githubcomdedaluslabsdedalussdkgo.F("What's in this image?"),
+                            },
+                            githubcomdedaluslabsdedalussdkgo.ChatCompletionContentPartImageParam{
+                                Type: githubcomdedaluslabsdedalussdkgo.F(
+                                    githubcomdedaluslabsdedalussdkgo.ChatCompletionContentPartImageParamTypeImageURL,
+                                ),
+                                ImageURL: githubcomdedaluslabsdedalussdkgo.F(
+                                    githubcomdedaluslabsdedalussdkgo.ChatCompletionContentPartImageParamImageURL{
+                                        URL: githubcomdedaluslabsdedalussdkgo.F(
+                                            "data:image/jpeg;base64," + imageBase64,
+                                        ),
+                                    },
+                                ),
+                            },
+                        },
+                    ),
+                },
+            },
+        ),
+    },
+)
+```
+
+## Complete Example
+
+```go
+package main
+
+import (
+    "context"
+    "fmt"
+    "io"
+    "os"
+    
+    "github.com/dedalus-labs/dedalus-sdk-go"
+    "github.com/dedalus-labs/dedalus-sdk-go/option"
+)
+
+func main() {
+    client := githubcomdedaluslabsdedalussdkgo.NewClient(
+        option.WithAPIKey(os.Getenv("DEDALUS_API_KEY")),
+    )
+    
+    // Example 1: Upload from file system
+    fmt.Println("Example 1: Upload from file system")
+    file, err := os.Open("/path/to/audio.mp3")
+    if err != nil {
+        panic(err.Error())
+    }
+    defer file.Close()
+    
+    transcription, err := client.Audio.Transcriptions.New(
+        context.TODO(),
+        githubcomdedaluslabsdedalussdkgo.AudioTranscriptionNewParams{
+            File:  githubcomdedaluslabsdedalussdkgo.F[io.Reader](file),
+            Model: githubcomdedaluslabsdedalussdkgo.F("whisper-1"),
+        },
+    )
+    
+    if err != nil {
+        panic(err.Error())
+    }
+    
+    fmt.Printf("Transcription: %s\n\n", transcription.Text)
+    
+    // Example 2: Upload with custom filename and content-type
+    fmt.Println("Example 2: Upload with custom metadata")
+    fileContent, _ := os.ReadFile("/path/to/audio.wav")
+    
+    transcription2, err := client.Audio.Transcriptions.New(
+        context.TODO(),
+        githubcomdedaluslabsdedalussdkgo.AudioTranscriptionNewParams{
+            File: githubcomdedaluslabsdedalussdkgo.FileParam(
+                bytes.NewReader(fileContent),
+                "my-custom-audio.wav",
+                "audio/wav",
+            ),
+            Model: githubcomdedaluslabsdedalussdkgo.F("whisper-1"),
+        },
+    )
+    
+    if err != nil {
+        panic(err.Error())
+    }
+    
+    fmt.Printf("Transcription: %s\n", transcription2.Text)
+}
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Close Files" icon="xmark">
+    Always use `defer file.Close()` to ensure files are closed after upload.
+  </Card>
+  
+  <Card title="Validate Size" icon="scale-balanced">
+    Check file size before uploading to avoid errors from oversized files.
+  </Card>
+  
+  <Card title="Set Content-Type" icon="file-code">
+    Use `FileParam` to set accurate content-type for better processing.
+  </Card>
+  
+  <Card title="Handle Errors" icon="triangle-exclamation">
+    Check for file read errors and upload errors separately.
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="File Too Large Error">
+    - Check the API's file size limits for your endpoint
+    - Consider compressing the file before upload
+    - Split large files into smaller chunks if supported
+  </Accordion>
+  
+  <Accordion title="Invalid File Format">
+    - Verify the file format is supported by the endpoint
+    - Set the correct content-type using `FileParam`
+    - Check that the file isn't corrupted
+  </Accordion>
+  
+  <Accordion title="File Not Found Error">
+    - Verify the file path is correct
+    - Check file permissions
+    - Ensure the file exists before opening
+  </Accordion>
+</AccordionGroup>

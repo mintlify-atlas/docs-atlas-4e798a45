@@ -1,0 +1,351 @@
+---
+title: 'Timeouts & Retries'
+description: 'Configure request timeouts and automatic retry behavior in the Dedalus Go SDK'
+---
+
+## Overview
+
+The Dedalus Go SDK provides flexible timeout and retry configuration to handle network issues, rate limits, and transient errors gracefully.
+
+## Default Behavior
+
+<CardGroup cols={2}>
+  <Card title="No Request Timeout" icon="clock">
+    Requests do not time out by default. Use context for overall timeout control.
+  </Card>
+  
+  <Card title="2 Retries" icon="rotate">
+    The SDK automatically retries failed requests up to **2 times** by default.
+  </Card>
+</CardGroup>
+
+## Context Timeouts
+
+Use Go's `context` package to set an overall timeout for a request (including all retries):
+
+```go
+import (
+    "context"
+    "time"
+    
+    "github.com/dedalus-labs/dedalus-sdk-go"
+)
+
+func main() {
+    client := githubcomdedaluslabsdedalussdkgo.NewClient(
+        option.WithAPIKey("your-api-key"),
+    )
+    
+    // Set a 5-minute timeout for the entire request (including retries)
+    ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+    defer cancel()
+    
+    chatCompletion, err := client.Chat.Completions.New(ctx, params)
+    if err != nil {
+        // Handle timeout or other errors
+        panic(err.Error())
+    }
+}
+```
+
+<Info>
+  The context timeout spans **all retry attempts**. If you retry 3 times with a 5-minute timeout, all attempts must complete within 5 minutes total.
+</Info>
+
+## Per-Retry Timeout
+
+Set a timeout for **each individual retry attempt** using `option.WithRequestTimeout()`:
+
+```go
+import (
+    "context"
+    "time"
+    
+    "github.com/dedalus-labs/dedalus-sdk-go"
+    "github.com/dedalus-labs/dedalus-sdk-go/option"
+)
+
+// 5-minute overall timeout
+ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+defer cancel()
+
+chatCompletion, err := client.Chat.Completions.New(
+    ctx,
+    params,
+    // 20-second timeout per retry attempt
+    option.WithRequestTimeout(20*time.Second),
+)
+```
+
+<Tip>
+  Use per-retry timeouts to prevent individual requests from hanging, while the context timeout controls the total time budget.
+</Tip>
+
+## Retry Configuration
+
+### Disable Retries
+
+To disable automatic retries:
+
+```go
+client := githubcomdedaluslabsdedalussdkgo.NewClient(
+    option.WithAPIKey("your-api-key"),
+    option.WithMaxRetries(0), // No retries
+)
+```
+
+### Increase Retries
+
+To increase the number of retry attempts:
+
+```go
+client := githubcomdedaluslabsdedalussdkgo.NewClient(
+    option.WithAPIKey("your-api-key"),
+    option.WithMaxRetries(5), // Retry up to 5 times
+)
+```
+
+### Per-Request Retries
+
+Override retry configuration for specific requests:
+
+```go
+// Client has default 2 retries
+client := githubcomdedaluslabsdedalussdkgo.NewClient(
+    option.WithAPIKey("your-api-key"),
+)
+
+// This specific request will retry up to 5 times
+chatCompletion, err := client.Chat.Completions.New(
+    context.TODO(),
+    params,
+    option.WithMaxRetries(5),
+)
+```
+
+## Retryable Errors
+
+The SDK automatically retries the following types of errors:
+
+<AccordionGroup>
+  <Accordion title="Network Errors">
+    - Connection errors
+    - DNS resolution failures
+    - Socket timeouts
+  </Accordion>
+  
+  <Accordion title="HTTP Status Codes">
+    - **408** Request Timeout
+    - **409** Conflict
+    - **429** Too Many Requests (Rate Limit)
+    - **500+** Internal Server Errors (500, 502, 503, 504, etc.)
+  </Accordion>
+</AccordionGroup>
+
+<Warning>
+  The SDK uses **exponential backoff** between retry attempts to avoid overwhelming the server.
+</Warning>
+
+## Complete Timeout & Retry Example
+
+```go
+package main
+
+import (
+    "context"
+    "fmt"
+    "time"
+    
+    "github.com/dedalus-labs/dedalus-sdk-go"
+    "github.com/dedalus-labs/dedalus-sdk-go/option"
+    "github.com/dedalus-labs/dedalus-sdk-go/shared"
+)
+
+func main() {
+    // Create client with custom retry configuration
+    client := githubcomdedaluslabsdedalussdkgo.NewClient(
+        option.WithAPIKey("your-api-key"),
+        option.WithMaxRetries(3), // Retry up to 3 times
+    )
+    
+    // Set overall timeout (5 minutes for all retries)
+    ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+    defer cancel()
+    
+    chatCompletion, err := client.Chat.Completions.New(
+        ctx,
+        githubcomdedaluslabsdedalussdkgo.ChatCompletionNewParams{
+            Model: githubcomdedaluslabsdedalussdkgo.F[
+                githubcomdedaluslabsdedalussdkgo.ChatCompletionNewParamsModelUnion
+            ](shared.UnionString("openai/gpt-4")),
+            Messages: githubcomdedaluslabsdedalussdkgo.F(
+                []githubcomdedaluslabsdedalussdkgo.ChatCompletionNewParamsMessageUnion{
+                    githubcomdedaluslabsdedalussdkgo.ChatCompletionUserMessageParam{
+                        Role: githubcomdedaluslabsdedalussdkgo.F(
+                            githubcomdedaluslabsdedalussdkgo.ChatCompletionUserMessageParamRoleUser,
+                        ),
+                        Content: githubcomdedaluslabsdedalussdkgo.F[
+                            githubcomdedaluslabsdedalussdkgo.ChatCompletionUserMessageParamContentUnion
+                        ](shared.UnionString("Hello, how are you?")),
+                    },
+                },
+            ),
+        },
+        // Set per-retry timeout (20 seconds per attempt)
+        option.WithRequestTimeout(20*time.Second),
+    )
+    
+    if err != nil {
+        // Check if error was due to timeout
+        if ctx.Err() == context.DeadlineExceeded {
+            fmt.Println("Request timed out after 5 minutes")
+        } else {
+            fmt.Printf("Request failed: %v\n", err)
+        }
+        return
+    }
+    
+    fmt.Printf("Chat completion ID: %s\n", chatCompletion.ID)
+}
+```
+
+## Advanced Patterns
+
+### Progressive Timeout Strategy
+
+Use different timeouts for different operations:
+
+```go
+// Quick operations - short timeout
+models, err := client.Models.List(
+    ctx,
+    option.WithRequestTimeout(5*time.Second),
+)
+
+// Long-running operations - longer timeout
+chatCompletion, err := client.Chat.Completions.New(
+    ctx,
+    params,
+    option.WithRequestTimeout(2*time.Minute),
+)
+```
+
+### Timeout with Cancellation
+
+```go
+import (
+    "context"
+    "fmt"
+    "time"
+)
+
+func makeRequestWithCancellation() {
+    ctx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
+    defer cancel()
+    
+    // Start request in goroutine
+    errChan := make(chan error, 1)
+    go func() {
+        _, err := client.Chat.Completions.New(ctx, params)
+        errChan <- err
+    }()
+    
+    // Wait for completion or user cancellation
+    select {
+    case err := <-errChan:
+        if err != nil {
+            fmt.Printf("Error: %v\n", err)
+        }
+    case <-time.After(30 * time.Second):
+        cancel() // Cancel if taking too long
+        fmt.Println("Request cancelled by user")
+    }
+}
+```
+
+### Custom Retry Logic
+
+For custom retry behavior, disable automatic retries and implement your own:
+
+```go
+import (
+    "errors"
+    "time"
+    
+    "github.com/dedalus-labs/dedalus-sdk-go"
+)
+
+func makeRequestWithCustomRetry(client *githubcomdedaluslabsdedalussdkgo.Client) error {
+    maxRetries := 5
+    baseDelay := 1 * time.Second
+    
+    for i := 0; i < maxRetries; i++ {
+        chatCompletion, err := client.Chat.Completions.New(
+            context.TODO(),
+            params,
+            option.WithMaxRetries(0), // Disable automatic retries
+        )
+        
+        if err == nil {
+            // Success!
+            return nil
+        }
+        
+        // Check if we should retry
+        var apiErr *githubcomdedaluslabsdedalussdkgo.Error
+        if errors.As(err, &apiErr) {
+            if apiErr.StatusCode == 429 || apiErr.StatusCode >= 500 {
+                // Exponential backoff
+                delay := baseDelay * time.Duration(1<<uint(i))
+                time.Sleep(delay)
+                continue
+            }
+        }
+        
+        // Don't retry other errors
+        return err
+    }
+    
+    return errors.New("max retries exceeded")
+}
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Always Use Context" icon="clock">
+    Always provide a context with timeout, even if you don't expect long-running operations.
+  </Card>
+  
+  <Card title="Set Per-Retry Timeouts" icon="stopwatch">
+    Use `WithRequestTimeout()` to prevent individual retry attempts from hanging indefinitely.
+  </Card>
+  
+  <Card title="Handle Rate Limits" icon="gauge-high">
+    Keep retries enabled (default 2) to automatically handle 429 rate limit errors.
+  </Card>
+  
+  <Card title="Monitor Retry Patterns" icon="chart-line">
+    Log retry attempts to identify reliability issues with your requests.
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Context Deadline Exceeded">
+    - Increase the context timeout
+    - Check if the API is experiencing high latency
+    - Consider reducing the request payload size
+  </Accordion>
+  
+  <Accordion title="Too Many Retries">
+    - Reduce `WithMaxRetries()` to avoid excessive retry attempts
+    - Check if the underlying issue is persistent (e.g., invalid API key)
+  </Accordion>
+  
+  <Accordion title="Request Still Hangs">
+    - Ensure you're using `WithRequestTimeout()` for per-retry timeouts
+    - Check your network configuration for proxy or firewall issues
+  </Accordion>
+</AccordionGroup>

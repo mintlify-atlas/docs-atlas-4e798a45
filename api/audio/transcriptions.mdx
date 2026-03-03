@@ -1,0 +1,314 @@
+---
+title: 'Audio Transcriptions'
+description: 'Transcribe audio files into text'
+api: 'POST /v1/audio/transcriptions'
+---
+
+## Overview
+
+Transcribes audio files using OpenAI's Whisper model. Supports multiple audio formats including mp3, mp4, mpeg, mpga, m4a, wav, and webm. Maximum file size is 25 MB.
+
+## Method Signature
+
+```go
+func (r *AudioTranscriptionService) New(
+    ctx context.Context,
+    body AudioTranscriptionNewParams,
+    opts ...option.RequestOption,
+) (*AudioTranscriptionNewResponse, error)
+```
+
+## Request Parameters
+
+<ParamField path="file" type="io.Reader" required>
+  Audio file to transcribe. Supported formats:
+  - mp3
+  - mp4
+  - mpeg
+  - mpga
+  - m4a
+  - wav
+  - webm
+  
+  Maximum file size: 25 MB
+</ParamField>
+
+<ParamField path="model" type="string" required>
+  Model ID to use for transcription. Example: `openai/whisper-1`
+</ParamField>
+
+<ParamField path="language" type="string">
+  ISO-639-1 language code of the audio (e.g., `en`, `es`, `fr`). Providing the language improves accuracy and latency.
+</ParamField>
+
+<ParamField path="prompt" type="string">
+  Optional text to guide the model's style or continue a previous audio segment. The prompt should match the audio language.
+</ParamField>
+
+<ParamField path="response_format" type="string" default="json">
+  Format of the transcript output:
+  - `json` - JSON object with text
+  - `text` - Plain text
+  - `srt` - SubRip subtitle format
+  - `verbose_json` - JSON with timestamps and metadata
+  - `vtt` - WebVTT subtitle format
+</ParamField>
+
+<ParamField path="temperature" type="float64" default="0">
+  Sampling temperature between 0 and 1. Higher values make output more random, lower values more focused and deterministic.
+</ParamField>
+
+## Response Fields
+
+<ResponseField name="text" type="string" required>
+  The transcribed text
+</ResponseField>
+
+<ResponseField name="language" type="string">
+  Detected language of the input audio (verbose_json only)
+</ResponseField>
+
+<ResponseField name="duration" type="float64">
+  Duration of the input audio in seconds (verbose_json only)
+</ResponseField>
+
+<ResponseField name="segments" type="[]TranscriptionSegment">
+  Array of transcription segments with timestamps (verbose_json only)
+  <Expandable title="Segment fields">
+    <ResponseField name="id" type="int64">
+      Unique segment identifier
+    </ResponseField>
+    <ResponseField name="text" type="string">
+      Text content of the segment
+    </ResponseField>
+    <ResponseField name="start" type="float64">
+      Start time in seconds
+    </ResponseField>
+    <ResponseField name="end" type="float64">
+      End time in seconds
+    </ResponseField>
+    <ResponseField name="tokens" type="[]int64">
+      Token IDs for the segment text
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="words" type="[]TranscriptionWord">
+  Word-level timestamps (verbose_json only, when word_timestamps enabled)
+  <Expandable title="Word fields">
+    <ResponseField name="word" type="string">
+      The word text
+    </ResponseField>
+    <ResponseField name="start" type="float64">
+      Start time in seconds
+    </ResponseField>
+    <ResponseField name="end" type="float64">
+      End time in seconds
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="usage" type="Usage">
+  Token or duration usage statistics
+</ResponseField>
+
+## Code Examples
+
+### Basic Transcription
+
+```go
+package main
+
+import (
+    "context"
+    "fmt"
+    "log"
+    "os"
+
+    dedalus "github.com/dedalus-labs/dedalus-sdk-go"
+    "github.com/dedalus-labs/dedalus-sdk-go/option"
+)
+
+func main() {
+    client := dedalus.NewClient(
+        option.WithAPIKey("your-api-key"),
+    )
+
+    ctx := context.Background()
+    
+    audioFile, err := os.Open("audio.mp3")
+    if err != nil {
+        log.Fatal(err)
+    }
+    defer audioFile.Close()
+
+    transcription, err := client.Audio.Transcriptions.New(ctx, dedalus.AudioTranscriptionNewParams{
+        File:  dedalus.F[io.Reader](audioFile),
+        Model: dedalus.F("openai/whisper-1"),
+    })
+
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    fmt.Println("Transcription:", transcription.Text)
+}
+```
+
+### With Language Hint
+
+```go
+audioFile, err := os.Open("spanish_audio.mp3")
+if err != nil {
+    log.Fatal(err)
+}
+defer audioFile.Close()
+
+transcription, err := client.Audio.Transcriptions.New(ctx, dedalus.AudioTranscriptionNewParams{
+    File:     dedalus.F[io.Reader](audioFile),
+    Model:    dedalus.F("openai/whisper-1"),
+    Language: dedalus.F("es"), // Spanish
+})
+```
+
+### Verbose JSON with Timestamps
+
+```go
+audioFile, err := os.Open("interview.mp3")
+if err != nil {
+    log.Fatal(err)
+}
+defer audioFile.Close()
+
+transcription, err := client.Audio.Transcriptions.New(ctx, dedalus.AudioTranscriptionNewParams{
+    File:           dedalus.F[io.Reader](audioFile),
+    Model:          dedalus.F("openai/whisper-1"),
+    ResponseFormat: dedalus.F("verbose_json"),
+})
+
+if err != nil {
+    log.Fatal(err)
+}
+
+fmt.Printf("Duration: %.2f seconds\n", transcription.Duration)
+fmt.Printf("Language: %s\n", transcription.Language)
+fmt.Printf("Text: %s\n", transcription.Text)
+
+// Access segments
+if segments, ok := transcription.Segments.([]dedalus.AudioTranscriptionNewResponseCreateTranscriptionResponseVerboseJSONSegment); ok {
+    for _, segment := range segments {
+        fmt.Printf("[%.2f - %.2f] %s\n", segment.Start, segment.End, segment.Text)
+    }
+}
+```
+
+### Generate SRT Subtitles
+
+```go
+audioFile, err := os.Open("video_audio.mp3")
+if err != nil {
+    log.Fatal(err)
+}
+defer audioFile.Close()
+
+transcription, err := client.Audio.Transcriptions.New(ctx, dedalus.AudioTranscriptionNewParams{
+    File:           dedalus.F[io.Reader](audioFile),
+    Model:          dedalus.F("openai/whisper-1"),
+    ResponseFormat: dedalus.F("srt"),
+})
+
+if err != nil {
+    log.Fatal(err)
+}
+
+// Save SRT file
+err = os.WriteFile("subtitles.srt", []byte(transcription.Text), 0644)
+if err != nil {
+    log.Fatal(err)
+}
+```
+
+### With Prompt for Context
+
+```go
+audioFile, err := os.Open("technical_talk.mp3")
+if err != nil {
+    log.Fatal(err)
+}
+defer audioFile.Close()
+
+transcription, err := client.Audio.Transcriptions.New(ctx, dedalus.AudioTranscriptionNewParams{
+    File:   dedalus.F[io.Reader](audioFile),
+    Model:  dedalus.F("openai/whisper-1"),
+    Prompt: dedalus.F("This is a technical presentation about machine learning, neural networks, and artificial intelligence."),
+})
+```
+
+### Process Multiple Files
+
+```go
+files := []string{"audio1.mp3", "audio2.mp3", "audio3.mp3"}
+
+for _, filename := range files {
+    audioFile, err := os.Open(filename)
+    if err != nil {
+        log.Printf("Error opening %s: %v", filename, err)
+        continue
+    }
+
+    transcription, err := client.Audio.Transcriptions.New(ctx, dedalus.AudioTranscriptionNewParams{
+        File:  dedalus.F[io.Reader](audioFile),
+        Model: dedalus.F("openai/whisper-1"),
+    })
+    audioFile.Close()
+
+    if err != nil {
+        log.Printf("Error transcribing %s: %v", filename, err)
+        continue
+    }
+
+    fmt.Printf("%s: %s\n", filename, transcription.Text)
+}
+```
+
+## Supported Languages
+
+Whisper supports 99 languages including:
+- English (en)
+- Spanish (es)
+- French (fr)
+- German (de)
+- Italian (it)
+- Portuguese (pt)
+- Dutch (nl)
+- Russian (ru)
+- Chinese (zh)
+- Japanese (ja)
+- Korean (ko)
+- Arabic (ar)
+- And many more...
+
+## Response Formats
+
+### JSON Format
+Simple JSON object with the transcribed text.
+
+### Verbose JSON Format
+Includes language detection, duration, segments with timestamps, and word-level timestamps.
+
+### SRT Format
+SubRip subtitle format with numbered segments, timestamps, and text.
+
+### VTT Format
+WebVTT subtitle format compatible with HTML5 video players.
+
+### Text Format
+Plain text output with no metadata.
+
+## Best Practices
+
+1. **File Size**: Keep audio files under 25 MB. For larger files, split them into chunks.
+2. **Language Hint**: Provide the language parameter for better accuracy and faster processing.
+3. **Audio Quality**: Higher quality audio produces better transcriptions.
+4. **Context Prompt**: Use prompts to improve accuracy for domain-specific terminology.
+5. **Format Selection**: Use `verbose_json` when you need timestamps and metadata.

@@ -1,0 +1,272 @@
+---
+title: 'Environments'
+description: 'Configure production and development environments for the Dedalus Go SDK'
+---
+
+## Overview
+
+The Dedalus Go SDK supports multiple environments with different base URLs. By default, the SDK uses the **production** environment, but you can easily switch to **development** for testing.
+
+## Available Environments
+
+<CardGroup cols={2}>
+  <Card title="Production" icon="globe">
+    **Base URL:** `https://api.dedaluslabs.ai/`
+    
+    Use for production workloads and live applications.
+  </Card>
+  
+  <Card title="Development" icon="flask">
+    **Base URL:** `http://localhost:4010/`
+    
+    Use for local testing and development with mock servers.
+  </Card>
+</CardGroup>
+
+## Default Environment
+
+The SDK defaults to the **production** environment:
+
+```go
+import (
+    "github.com/dedalus-labs/dedalus-sdk-go"
+    "github.com/dedalus-labs/dedalus-sdk-go/option"
+)
+
+// Uses production environment by default
+client := githubcomdedaluslabsdedalussdkgo.NewClient(
+    option.WithAPIKey("your-api-key"),
+)
+```
+
+This is equivalent to:
+
+```go
+client := githubcomdedaluslabsdedalussdkgo.NewClient(
+    option.WithAPIKey("your-api-key"),
+    option.WithEnvironmentProduction(), // explicit
+)
+```
+
+## Development Environment
+
+Switch to the development environment for local testing:
+
+```go
+import (
+    "github.com/dedalus-labs/dedalus-sdk-go"
+    "github.com/dedalus-labs/dedalus-sdk-go/option"
+)
+
+client := githubcomdedaluslabsdedalussdkgo.NewClient(
+    option.WithAPIKey("test-api-key"),
+    option.WithEnvironmentDevelopment(),
+)
+```
+
+<Info>
+  The development environment points to `http://localhost:4010/` by default, which is useful for running local mock servers or test environments.
+</Info>
+
+## Environment from Environment Variable
+
+You can also set the base URL using the `DEDALUS_BASE_URL` environment variable:
+
+```bash
+export DEDALUS_BASE_URL="https://staging.dedaluslabs.ai/"
+```
+
+The SDK will automatically use this base URL:
+
+```go
+// Reads DEDALUS_BASE_URL from environment
+client := githubcomdedaluslabsdedalussdkgo.NewClient(
+    option.WithAPIKey("your-api-key"),
+)
+```
+
+## Custom Base URL
+
+For custom environments (e.g., staging, private deployments):
+
+```go
+client := githubcomdedaluslabsdedalussdkgo.NewClient(
+    option.WithAPIKey("your-api-key"),
+    option.WithBaseURL("https://custom.dedaluslabs.ai/"),
+)
+```
+
+<Warning>
+  For security reasons, ensure that the base URL is trusted. The SDK will append a trailing slash if needed.
+</Warning>
+
+## Environment-Specific Configuration
+
+<Steps>
+  <Step title="Define Environment Constants">
+    Create constants for different environments:
+    
+    ```go
+    const (
+        EnvProduction  = "production"
+        EnvStaging     = "staging"
+        EnvDevelopment = "development"
+    )
+    ```
+  </Step>
+  
+  <Step title="Create Environment-Aware Client">
+    Build a helper function that returns the appropriate client:
+    
+    ```go
+    import (
+        "os"
+        
+        "github.com/dedalus-labs/dedalus-sdk-go"
+        "github.com/dedalus-labs/dedalus-sdk-go/option"
+    )
+    
+    func NewDedalusClient(env string) *githubcomdedaluslabsdedalussdkgo.Client {
+        apiKey := os.Getenv("DEDALUS_API_KEY")
+        
+        opts := []option.RequestOption{
+            option.WithAPIKey(apiKey),
+        }
+        
+        switch env {
+        case EnvProduction:
+            opts = append(opts, option.WithEnvironmentProduction())
+        case EnvStaging:
+            opts = append(opts, option.WithBaseURL("https://staging.dedaluslabs.ai/"))
+        case EnvDevelopment:
+            opts = append(opts, option.WithEnvironmentDevelopment())
+        default:
+            opts = append(opts, option.WithEnvironmentProduction())
+        }
+        
+        return githubcomdedaluslabsdedalussdkgo.NewClient(opts...)
+    }
+    ```
+  </Step>
+  
+  <Step title="Use in Your Application">
+    ```go
+    func main() {
+        env := os.Getenv("APP_ENV")
+        if env == "" {
+            env = EnvProduction
+        }
+        
+        client := NewDedalusClient(env)
+        
+        // Use client...
+    }
+    ```
+  </Step>
+</Steps>
+
+## Testing with Mock Servers
+
+For local development, you can use tools like [Prism](https://stoplight.io/open-source/prism) or [WireMock](http://wiremock.org/) to create mock API servers:
+
+```bash
+# Start a mock server on localhost:4010
+prism mock openapi.yaml --port 4010
+```
+
+Then use the development environment:
+
+```go
+client := githubcomdedaluslabsdedalussdkgo.NewClient(
+    option.WithAPIKey("test-key"),
+    option.WithEnvironmentDevelopment(), // points to localhost:4010
+)
+```
+
+## Complete Example
+
+```go
+package main
+
+import (
+    "context"
+    "fmt"
+    "os"
+    
+    "github.com/dedalus-labs/dedalus-sdk-go"
+    "github.com/dedalus-labs/dedalus-sdk-go/option"
+    "github.com/dedalus-labs/dedalus-sdk-go/shared"
+)
+
+func main() {
+    // Read environment from env var, default to production
+    env := os.Getenv("APP_ENV")
+    if env == "" {
+        env = "production"
+    }
+    
+    // Configure client based on environment
+    var opts []option.RequestOption
+    opts = append(opts, option.WithAPIKey(os.Getenv("DEDALUS_API_KEY")))
+    
+    switch env {
+    case "development":
+        opts = append(opts, option.WithEnvironmentDevelopment())
+        fmt.Println("Using development environment: http://localhost:4010/")
+    case "staging":
+        opts = append(opts, option.WithBaseURL("https://staging.dedaluslabs.ai/"))
+        fmt.Println("Using staging environment")
+    default:
+        opts = append(opts, option.WithEnvironmentProduction())
+        fmt.Println("Using production environment: https://api.dedaluslabs.ai/")
+    }
+    
+    client := githubcomdedaluslabsdedalussdkgo.NewClient(opts...)
+    
+    // Make a request
+    models, err := client.Models.List(context.TODO())
+    if err != nil {
+        panic(err.Error())
+    }
+    
+    fmt.Printf("Found %d models\n", len(models.Data))
+}
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Use Environment Variables" icon="code">
+    Store environment configuration in environment variables rather than hardcoding.
+  </Card>
+  
+  <Card title="Separate API Keys" icon="key">
+    Use different API keys for production, staging, and development environments.
+  </Card>
+  
+  <Card title="Default to Production" icon="shield-check">
+    Always default to production to avoid accidentally hitting development endpoints in production code.
+  </Card>
+  
+  <Card title="Log Environment" icon="file-lines">
+    Log which environment your application is using at startup for debugging.
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Connection Refused Error">
+    If using the development environment, ensure your local mock server is running on `localhost:4010`.
+  </Accordion>
+  
+  <Accordion title="Wrong Environment">
+    - Check the `DEDALUS_BASE_URL` environment variable
+    - Verify you're passing the correct `WithEnvironment*()` option
+    - The last environment option passed takes precedence
+  </Accordion>
+  
+  <Accordion title="SSL Certificate Errors">
+    Development environment uses `http://` by default. For custom HTTPS environments, ensure SSL certificates are valid.
+  </Accordion>
+</AccordionGroup>

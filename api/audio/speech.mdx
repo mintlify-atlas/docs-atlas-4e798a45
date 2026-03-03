@@ -1,0 +1,236 @@
+---
+title: 'Text to Speech'
+description: 'Generate speech audio from text'
+api: 'POST /v1/audio/speech'
+---
+
+## Overview
+
+Generates audio from input text using text-to-speech models. Supports multiple voices and output formats including mp3, opus, aac, flac, wav, and pcm.
+
+## Method Signature
+
+```go
+func (r *AudioSpeechService) New(
+    ctx context.Context,
+    body AudioSpeechNewParams,
+    opts ...option.RequestOption,
+) (*http.Response, error)
+```
+
+## Request Parameters
+
+<ParamField path="input" type="string" required>
+  The text to generate audio for. Maximum length is 4096 characters.
+</ParamField>
+
+<ParamField path="model" type="string" required>
+  One of the available TTS models:
+  - `openai/tts-1` - Standard quality, faster
+  - `openai/tts-1-hd` - High definition, higher quality
+  - `openai/gpt-4o-mini-tts` - Latest model with additional features
+</ParamField>
+
+<ParamField path="voice" type="string" required>
+  The voice to use for generating audio. Supported voices:
+  - `alloy`
+  - `ash`
+  - `ballad`
+  - `coral`
+  - `echo`
+  - `fable`
+  - `onyx`
+  - `nova`
+  - `sage`
+  - `shimmer`
+  - `verse`
+</ParamField>
+
+<ParamField path="response_format" type="string" default="mp3">
+  The format to return the audio in. Supported formats:
+  - `mp3` - MPEG Audio Layer 3
+  - `opus` - Opus audio codec
+  - `aac` - Advanced Audio Coding
+  - `flac` - Free Lossless Audio Codec
+  - `wav` - Waveform Audio File Format
+  - `pcm` - Pulse-Code Modulation
+</ParamField>
+
+<ParamField path="speed" type="float64" default="1.0">
+  The speed of the generated audio. Select a value from `0.25` to `4.0`.
+  - `1.0` is the default/normal speed
+  - Values < 1.0 slow down the speech
+  - Values > 1.0 speed up the speech
+</ParamField>
+
+<ParamField path="instructions" type="string">
+  Control the voice with additional instructions. Does not work with `tts-1` or `tts-1-hd`. Only supported with `gpt-4o-mini-tts`.
+</ParamField>
+
+<ParamField path="stream_format" type="string">
+  The format to stream the audio in. Supported formats:
+  - `sse` - Server-Sent Events (not supported for `tts-1` or `tts-1-hd`)
+  - `audio` - Raw audio streaming
+</ParamField>
+
+## Response
+
+Returns an `http.Response` containing the audio data stream. The response body should be read and saved to a file or streamed directly to the user.
+
+## Code Examples
+
+### Basic Text-to-Speech
+
+```go
+package main
+
+import (
+    "context"
+    "io"
+    "log"
+    "os"
+
+    dedalus "github.com/dedalus-labs/dedalus-sdk-go"
+    "github.com/dedalus-labs/dedalus-sdk-go/option"
+)
+
+func main() {
+    client := dedalus.NewClient(
+        option.WithAPIKey("your-api-key"),
+    )
+
+    ctx := context.Background()
+    
+    response, err := client.Audio.Speech.New(ctx, dedalus.AudioSpeechNewParams{
+        Input: dedalus.F("Hello! This is a text-to-speech example."),
+        Model: dedalus.F("openai/tts-1"),
+        Voice: dedalus.F(dedalus.AudioSpeechNewParamsVoiceAlloy),
+    })
+
+    if err != nil {
+        log.Fatal(err)
+    }
+    defer response.Body.Close()
+
+    // Save to file
+    file, err := os.Create("speech.mp3")
+    if err != nil {
+        log.Fatal(err)
+    }
+    defer file.Close()
+
+    _, err = io.Copy(file, response.Body)
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    log.Println("Audio saved to speech.mp3")
+}
+```
+
+### Custom Format and Speed
+
+```go
+response, err := client.Audio.Speech.New(ctx, dedalus.AudioSpeechNewParams{
+    Input:          dedalus.F("This speech will be faster and in FLAC format."),
+    Model:          dedalus.F("openai/tts-1-hd"),
+    Voice:          dedalus.F(dedalus.AudioSpeechNewParamsVoiceNova),
+    ResponseFormat: dedalus.F(dedalus.AudioSpeechNewParamsResponseFormatFlac),
+    Speed:          dedalus.F(1.25), // 25% faster
+})
+```
+
+### Different Voices
+
+```go
+voices := []dedalus.AudioSpeechNewParamsVoice{
+    dedalus.AudioSpeechNewParamsVoiceAlloy,
+    dedalus.AudioSpeechNewParamsVoiceEcho,
+    dedalus.AudioSpeechNewParamsVoiceFable,
+    dedalus.AudioSpeechNewParamsVoiceOnyx,
+    dedalus.AudioSpeechNewParamsVoiceNova,
+    dedalus.AudioSpeechNewParamsVoiceShimmer,
+}
+
+text := "Hello, this is a voice sample."
+
+for i, voice := range voices {
+    response, err := client.Audio.Speech.New(ctx, dedalus.AudioSpeechNewParams{
+        Input: dedalus.F(text),
+        Model: dedalus.F("openai/tts-1"),
+        Voice: dedalus.F(voice),
+    })
+
+    if err != nil {
+        log.Printf("Error with voice %s: %v", voice, err)
+        continue
+    }
+    defer response.Body.Close()
+
+    // Save each voice sample
+    filename := fmt.Sprintf("voice_%s.mp3", voice)
+    file, _ := os.Create(filename)
+    io.Copy(file, response.Body)
+    file.Close()
+}
+```
+
+### With Instructions (GPT-4o-mini-tts)
+
+```go
+response, err := client.Audio.Speech.New(ctx, dedalus.AudioSpeechNewParams{
+    Input:        dedalus.F("Welcome to our podcast about AI technology."),
+    Model:        dedalus.F("openai/gpt-4o-mini-tts"),
+    Voice:        dedalus.F(dedalus.AudioSpeechNewParamsVoiceSage),
+    Instructions: dedalus.F("Speak in an enthusiastic and professional podcast host tone."),
+})
+```
+
+### Streaming Audio
+
+```go
+response, err := client.Audio.Speech.New(ctx, dedalus.AudioSpeechNewParams{
+    Input:        dedalus.F("This is a streaming audio example."),
+    Model:        dedalus.F("openai/gpt-4o-mini-tts"),
+    Voice:        dedalus.F(dedalus.AudioSpeechNewParamsVoiceAlloy),
+    StreamFormat: dedalus.F(dedalus.AudioSpeechNewParamsStreamFormatAudio),
+})
+
+if err != nil {
+    log.Fatal(err)
+}
+defer response.Body.Close()
+
+// Stream audio data in chunks
+buffer := make([]byte, 4096)
+for {
+    n, err := response.Body.Read(buffer)
+    if err != nil && err != io.EOF {
+        log.Fatal(err)
+    }
+    if n == 0 {
+        break
+    }
+    
+    // Process or play audio chunk
+    // ...
+}
+```
+
+## Voice Characteristics
+
+- **alloy** - Neutral, versatile voice
+- **echo** - Warm, engaging voice
+- **fable** - Expressive, storytelling voice
+- **onyx** - Deep, authoritative voice
+- **nova** - Energetic, youthful voice
+- **shimmer** - Soft, pleasant voice
+- **ash**, **ballad**, **coral**, **sage**, **verse** - Additional voice options with unique characteristics
+
+## Best Practices
+
+1. **Text Length**: Keep input text under 4096 characters. For longer content, split into chunks.
+2. **Format Selection**: Use MP3 for general use, FLAC for highest quality, Opus for smallest file size
+3. **Speed Adjustment**: Use speed between 0.75-1.5 for natural-sounding results
+4. **Voice Selection**: Test different voices to find the best match for your use case
+5. **Error Handling**: Always check for errors and handle response cleanup properly

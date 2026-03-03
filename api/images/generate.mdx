@@ -1,0 +1,335 @@
+---
+title: 'Generate Images'
+description: 'Create images from text prompts'
+api: 'POST /v1/images/generations'
+---
+
+## Overview
+
+Generates images from text prompts using pure image generation models (DALL-E, GPT Image). For multimodal models like gemini-2.5-flash-image, use the `/v1/chat/completions` endpoint instead.
+
+## Method Signature
+
+```go
+func (r *ImageService) Generate(
+    ctx context.Context,
+    body ImageGenerateParams,
+    opts ...option.RequestOption,
+) (*ImagesResponse, error)
+```
+
+## Request Parameters
+
+<ParamField path="prompt" type="string" required>
+  Text description of the desired image(s). Maximum length:
+  - 32,000 characters for `gpt-image-1`
+  - 1,000 characters for `dall-e-2`
+  - 4,000 characters for `dall-e-3`
+</ParamField>
+
+<ParamField path="model" type="string" default="openai/dall-e-2">
+  The model to use for image generation:
+  - `openai/dall-e-2` - Fast, cost-effective
+  - `openai/dall-e-3` - Higher quality, more detailed
+  - `openai/gpt-image-1` - Latest model with advanced features
+</ParamField>
+
+<ParamField path="n" type="int64" default="1">
+  Number of images to generate. Must be between 1 and 10.
+  Note: `dall-e-3` only supports `n=1`.
+</ParamField>
+
+<ParamField path="size" type="string">
+  Size of generated images:
+  - For `dall-e-2`: `256x256`, `512x512`, `1024x1024`
+  - For `dall-e-3`: `1024x1024`, `1792x1024`, `1024x1792`
+  - For `gpt-image-1`: `1024x1024`, `1536x1024`, `1024x1536`, `auto` (default)
+</ParamField>
+
+<ParamField path="quality" type="string" default="auto">
+  Quality of the generated image:
+  - `auto` - Automatically select best quality
+  - For `gpt-image-1`: `high`, `medium`, `low`
+  - For `dall-e-3`: `hd`, `standard`
+  - For `dall-e-2`: `standard` only
+</ParamField>
+
+<ParamField path="style" type="string">
+  Style of the generated images (`dall-e-3` only):
+  - `vivid` - Hyper-real and dramatic images
+  - `natural` - More natural, less hyper-real images
+</ParamField>
+
+<ParamField path="response_format" type="string" default="url">
+  Format for returned images (`dall-e-2` and `dall-e-3`):
+  - `url` - Returns URLs (valid for 60 minutes)
+  - `b64_json` - Returns base64-encoded JSON
+  
+  Note: `gpt-image-1` always returns base64-encoded images
+</ParamField>
+
+<ParamField path="output_format" type="string" default="png">
+  Output image format (`gpt-image-1` only):
+  - `png` - PNG format
+  - `jpeg` - JPEG format
+  - `webp` - WebP format
+</ParamField>
+
+<ParamField path="output_compression" type="int64" default="100">
+  Compression level 0-100% (`gpt-image-1` with `webp` or `jpeg` only)
+</ParamField>
+
+<ParamField path="background" type="string" default="auto">
+  Background transparency (`gpt-image-1` only):
+  - `auto` - Model determines best background
+  - `transparent` - Transparent background (requires `png` or `webp`)
+  - `opaque` - Opaque background
+</ParamField>
+
+<ParamField path="moderation" type="string" default="auto">
+  Content moderation level (`gpt-image-1` only):
+  - `auto` - Standard filtering
+  - `low` - Less restrictive filtering
+</ParamField>
+
+<ParamField path="stream" type="bool" default="false">
+  Generate in streaming mode (`gpt-image-1` only)
+</ParamField>
+
+<ParamField path="partial_images" type="int64" default="0">
+  Number of partial images for streaming (0-3, `gpt-image-1` only)
+</ParamField>
+
+<ParamField path="user" type="string">
+  Unique identifier for end-user for abuse monitoring
+</ParamField>
+
+## Response Fields
+
+<ResponseField name="created" type="int64" required>
+  Unix timestamp when images were created
+</ResponseField>
+
+<ResponseField name="data" type="[]Image" required>
+  Array of generated images
+  <Expandable title="Image fields">
+    <ResponseField name="url" type="string">
+      URL of the generated image (if response_format=url)
+    </ResponseField>
+    <ResponseField name="b64_json" type="string">
+      Base64-encoded image data (if response_format=b64_json)
+    </ResponseField>
+    <ResponseField name="revised_prompt" type="string">
+      Revised prompt used for generation (dall-e-3 only)
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## Code Examples
+
+### Basic Image Generation
+
+```go
+package main
+
+import (
+    "context"
+    "fmt"
+    "log"
+
+    dedalus "github.com/dedalus-labs/dedalus-sdk-go"
+    "github.com/dedalus-labs/dedalus-sdk-go/option"
+)
+
+func main() {
+    client := dedalus.NewClient(
+        option.WithAPIKey("your-api-key"),
+    )
+
+    ctx := context.Background()
+    
+    response, err := client.Images.Generate(ctx, dedalus.ImageGenerateParams{
+        CreateImageRequest: dedalus.CreateImageRequestParam{
+            Prompt: dedalus.F("A serene landscape with mountains and a lake at sunset"),
+            Model:  dedalus.F("openai/dall-e-3"),
+            Size:   dedalus.F(dedalus.CreateImageRequestSize1024x1024),
+        },
+    })
+
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    fmt.Println("Image URL:", response.Data[0].URL)
+    if response.Data[0].RevisedPrompt != "" {
+        fmt.Println("Revised Prompt:", response.Data[0].RevisedPrompt)
+    }
+}
+```
+
+### Generate Multiple Images
+
+```go
+response, err := client.Images.Generate(ctx, dedalus.ImageGenerateParams{
+    CreateImageRequest: dedalus.CreateImageRequestParam{
+        Prompt: dedalus.F("A cute robot playing with a puppy"),
+        Model:  dedalus.F("openai/dall-e-2"),
+        N:      dedalus.F(int64(4)),
+        Size:   dedalus.F(dedalus.CreateImageRequestSize512x512),
+    },
+})
+
+if err != nil {
+    log.Fatal(err)
+}
+
+for i, image := range response.Data {
+    fmt.Printf("Image %d: %s\n", i+1, image.URL)
+}
+```
+
+### High Quality with Specific Style
+
+```go
+response, err := client.Images.Generate(ctx, dedalus.ImageGenerateParams{
+    CreateImageRequest: dedalus.CreateImageRequestParam{
+        Prompt:  dedalus.F("A futuristic city with flying cars and neon lights"),
+        Model:   dedalus.F("openai/dall-e-3"),
+        Size:    dedalus.F(dedalus.CreateImageRequestSize1792x1024),
+        Quality: dedalus.F(dedalus.CreateImageRequestQualityHD),
+        Style:   dedalus.F(dedalus.CreateImageRequestStyleVivid),
+    },
+})
+```
+
+### Base64 Encoded Image
+
+```go
+import (
+    "encoding/base64"
+    "os"
+)
+
+response, err := client.Images.Generate(ctx, dedalus.ImageGenerateParams{
+    CreateImageRequest: dedalus.CreateImageRequestParam{
+        Prompt:         dedalus.F("A watercolor painting of a garden"),
+        Model:          dedalus.F("openai/dall-e-2"),
+        ResponseFormat: dedalus.F(dedalus.CreateImageRequestResponseFormatB64JSON),
+    },
+})
+
+if err != nil {
+    log.Fatal(err)
+}
+
+// Decode and save image
+imageData, err := base64.StdEncoding.DecodeString(response.Data[0].B64JSON)
+if err != nil {
+    log.Fatal(err)
+}
+
+err = os.WriteFile("generated_image.png", imageData, 0644)
+if err != nil {
+    log.Fatal(err)
+}
+```
+
+### GPT Image 1 with Advanced Features
+
+```go
+response, err := client.Images.Generate(ctx, dedalus.ImageGenerateParams{
+    CreateImageRequest: dedalus.CreateImageRequestParam{
+        Prompt:            dedalus.F("A product photo of a sleek smartphone on a clean white background"),
+        Model:             dedalus.F("openai/gpt-image-1"),
+        Size:              dedalus.F(dedalus.CreateImageRequestSizeAuto),
+        Quality:           dedalus.F(dedalus.CreateImageRequestQualityHigh),
+        OutputFormat:      dedalus.F(dedalus.CreateImageRequestOutputFormatWebp),
+        OutputCompression: dedalus.F(int64(85)),
+        Background:        dedalus.F(dedalus.CreateImageRequestBackgroundOpaque),
+    },
+})
+```
+
+### Transparent Background
+
+```go
+response, err := client.Images.Generate(ctx, dedalus.ImageGenerateParams{
+    CreateImageRequest: dedalus.CreateImageRequestParam{
+        Prompt:       dedalus.F("A cartoon character, centered, no background"),
+        Model:        dedalus.F("openai/gpt-image-1"),
+        Background:   dedalus.F(dedalus.CreateImageRequestBackgroundTransparent),
+        OutputFormat: dedalus.F(dedalus.CreateImageRequestOutputFormatPng),
+    },
+})
+```
+
+### Download and Save Image
+
+```go
+import (
+    "io"
+    "net/http"
+)
+
+response, err := client.Images.Generate(ctx, dedalus.ImageGenerateParams{
+    CreateImageRequest: dedalus.CreateImageRequestParam{
+        Prompt: dedalus.F("A beautiful sunset over the ocean"),
+        Model:  dedalus.F("openai/dall-e-3"),
+    },
+})
+
+if err != nil {
+    log.Fatal(err)
+}
+
+// Download the image
+resp, err := http.Get(response.Data[0].URL)
+if err != nil {
+    log.Fatal(err)
+}
+defer resp.Body.Close()
+
+// Save to file
+file, err := os.Create("generated_image.png")
+if err != nil {
+    log.Fatal(err)
+}
+defer file.Close()
+
+_, err = io.Copy(file, resp.Body)
+if err != nil {
+    log.Fatal(err)
+}
+
+fmt.Println("Image saved successfully!")
+```
+
+## Model Comparison
+
+### DALL-E 2
+- Fast and cost-effective
+- Good for simple images
+- Multiple images per request (n=1-10)
+- Lower resolution options available
+
+### DALL-E 3
+- Higher quality and more detailed
+- Better prompt adherence
+- Revised prompt feature
+- Single image per request (n=1)
+- HD quality option
+
+### GPT Image 1
+- Latest model with most features
+- Transparent backgrounds
+- Custom output formats and compression
+- Streaming support
+- Flexible quality levels
+
+## Best Practices
+
+1. **Prompt Writing**: Be specific and descriptive in your prompts
+2. **Model Selection**: Use DALL-E 2 for quick iterations, DALL-E 3 or GPT Image 1 for final high-quality images
+3. **Batch Generation**: Use DALL-E 2 with n>1 for multiple variations
+4. **File Handling**: Download and save images immediately as URLs expire after 60 minutes
+5. **Error Handling**: Handle content policy violations gracefully

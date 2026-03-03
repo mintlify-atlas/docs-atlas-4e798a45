@@ -1,0 +1,374 @@
+---
+title: 'List Models'
+description: 'Retrieve the list of available models'
+api: 'GET /v1/models'
+---
+
+## Overview
+
+Retrieves the complete list of models available to your organization, including models from OpenAI, Anthropic, Google, xAI, Mistral, Groq, Fireworks, and DeepSeek.
+
+## Method Signature
+
+```go
+func (r *ModelService) List(
+    ctx context.Context,
+    opts ...option.RequestOption,
+) (*ListModelsResponse, error)
+```
+
+## Response Fields
+
+<ResponseField name="object" type="string">
+  Object type, always `list`
+</ResponseField>
+
+<ResponseField name="data" type="[]Model" required>
+  Array of available models
+  <Expandable title="Model fields">
+    <ResponseField name="id" type="string" required>
+      Unique model identifier with provider prefix (e.g., `openai/gpt-4`, `anthropic/claude-3-5-sonnet-20241022`)
+    </ResponseField>
+    <ResponseField name="provider" type="string" required>
+      Provider that hosts the model: `openai`, `anthropic`, `google`, `xai`, `mistral`, `groq`, `fireworks`, `deepseek`
+    </ResponseField>
+    <ResponseField name="created_at" type="time.Time" required>
+      When the model was released (RFC 3339 format)
+    </ResponseField>
+    <ResponseField name="display_name" type="string">
+      Human-readable model name
+    </ResponseField>
+    <ResponseField name="description" type="string">
+      Model description
+    </ResponseField>
+    <ResponseField name="version" type="string">
+      Model version identifier
+    </ResponseField>
+    <ResponseField name="capabilities" type="ModelCapabilities">
+      Model capabilities
+      <Expandable title="Capability fields">
+        <ResponseField name="text" type="bool">
+          Supports text generation
+        </ResponseField>
+        <ResponseField name="vision" type="bool">
+          Supports image understanding
+        </ResponseField>
+        <ResponseField name="audio" type="bool">
+          Supports audio processing
+        </ResponseField>
+        <ResponseField name="image_generation" type="bool">
+          Supports image generation
+        </ResponseField>
+        <ResponseField name="tools" type="bool">
+          Supports function/tool calling
+        </ResponseField>
+        <ResponseField name="streaming" type="bool">
+          Supports streaming responses
+        </ResponseField>
+        <ResponseField name="structured_output" type="bool">
+          Supports structured JSON output
+        </ResponseField>
+        <ResponseField name="thinking" type="bool">
+          Supports extended thinking/reasoning
+        </ResponseField>
+        <ResponseField name="input_token_limit" type="int64">
+          Maximum input tokens
+        </ResponseField>
+        <ResponseField name="output_token_limit" type="int64">
+          Maximum output tokens
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+    <ResponseField name="defaults" type="ModelDefaults">
+      Default parameters
+      <Expandable title="Default fields">
+        <ResponseField name="temperature" type="float64">
+          Default temperature
+        </ResponseField>
+        <ResponseField name="top_p" type="float64">
+          Default top_p
+        </ResponseField>
+        <ResponseField name="top_k" type="int64">
+          Default top_k
+        </ResponseField>
+        <ResponseField name="max_output_tokens" type="int64">
+          Default max output tokens
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+    <ResponseField name="provider_info" type="map[string]interface{}">
+      Raw provider-specific metadata
+    </ResponseField>
+    <ResponseField name="provider_declared_generation_methods" type="[]string">
+      Provider-specific generation method names
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## Code Examples
+
+### List All Models
+
+```go
+package main
+
+import (
+    "context"
+    "fmt"
+    "log"
+
+    dedalus "github.com/dedalus-labs/dedalus-sdk-go"
+    "github.com/dedalus-labs/dedalus-sdk-go/option"
+)
+
+func main() {
+    client := dedalus.NewClient(
+        option.WithAPIKey("your-api-key"),
+    )
+
+    ctx := context.Background()
+    
+    response, err := client.Models.List(ctx)
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    fmt.Printf("Found %d models\n\n", len(response.Data))
+    
+    for _, model := range response.Data {
+        fmt.Printf("ID: %s\n", model.ID)
+        fmt.Printf("Provider: %s\n", model.Provider)
+        if model.DisplayName != "" {
+            fmt.Printf("Name: %s\n", model.DisplayName)
+        }
+        fmt.Println()
+    }
+}
+```
+
+### Filter by Provider
+
+```go
+response, err := client.Models.List(ctx)
+if err != nil {
+    log.Fatal(err)
+}
+
+// Filter OpenAI models
+openaiModels := []dedalus.Model{}
+for _, model := range response.Data {
+    if model.Provider == dedalus.ModelProviderOpenAI {
+        openaiModels = append(openaiModels, model)
+    }
+}
+
+fmt.Printf("OpenAI models: %d\n", len(openaiModels))
+for _, model := range openaiModels {
+    fmt.Printf("  - %s\n", model.ID)
+}
+```
+
+### Find Models by Capability
+
+```go
+response, err := client.Models.List(ctx)
+if err != nil {
+    log.Fatal(err)
+}
+
+// Find models that support vision
+visionModels := []dedalus.Model{}
+for _, model := range response.Data {
+    if model.Capabilities.Vision {
+        visionModels = append(visionModels, model)
+    }
+}
+
+fmt.Printf("Vision-capable models: %d\n", len(visionModels))
+for _, model := range visionModels {
+    fmt.Printf("  - %s (%s)\n", model.ID, model.Provider)
+}
+```
+
+### Display Model Capabilities
+
+```go
+response, err := client.Models.List(ctx)
+if err != nil {
+    log.Fatal(err)
+}
+
+for _, model := range response.Data {
+    fmt.Printf("\nModel: %s\n", model.ID)
+    
+    if model.DisplayName != "" {
+        fmt.Printf("Name: %s\n", model.DisplayName)
+    }
+    
+    fmt.Println("Capabilities:")
+    if model.Capabilities.Text {
+        fmt.Println("  ✓ Text generation")
+    }
+    if model.Capabilities.Vision {
+        fmt.Println("  ✓ Vision (image understanding)")
+    }
+    if model.Capabilities.Audio {
+        fmt.Println("  ✓ Audio processing")
+    }
+    if model.Capabilities.ImageGeneration {
+        fmt.Println("  ✓ Image generation")
+    }
+    if model.Capabilities.Tools {
+        fmt.Println("  ✓ Function/tool calling")
+    }
+    if model.Capabilities.Streaming {
+        fmt.Println("  ✓ Streaming")
+    }
+    if model.Capabilities.StructuredOutput {
+        fmt.Println("  ✓ Structured output")
+    }
+    if model.Capabilities.Thinking {
+        fmt.Println("  ✓ Extended thinking")
+    }
+    
+    if model.Capabilities.InputTokenLimit > 0 {
+        fmt.Printf("  Max input tokens: %d\n", model.Capabilities.InputTokenLimit)
+    }
+    if model.Capabilities.OutputTokenLimit > 0 {
+        fmt.Printf("  Max output tokens: %d\n", model.Capabilities.OutputTokenLimit)
+    }
+}
+```
+
+### Group Models by Provider
+
+```go
+response, err := client.Models.List(ctx)
+if err != nil {
+    log.Fatal(err)
+}
+
+// Group by provider
+modelsByProvider := make(map[dedalus.ModelProvider][]dedalus.Model)
+for _, model := range response.Data {
+    modelsByProvider[model.Provider] = append(modelsByProvider[model.Provider], model)
+}
+
+// Display grouped models
+for provider, models := range modelsByProvider {
+    fmt.Printf("\n%s (%d models):\n", provider, len(models))
+    for _, model := range models {
+        fmt.Printf("  - %s\n", model.ID)
+    }
+}
+```
+
+### Find Models for Specific Use Case
+
+```go
+response, err := client.Models.List(ctx)
+if err != nil {
+    log.Fatal(err)
+}
+
+// Find models suitable for multimodal chat (text + vision + tools)
+fmt.Println("Multimodal chat models (text + vision + tools):")
+
+for _, model := range response.Data {
+    if model.Capabilities.Text && 
+       model.Capabilities.Vision && 
+       model.Capabilities.Tools {
+        fmt.Printf("  - %s\n", model.ID)
+        if model.Description != "" {
+            fmt.Printf("    %s\n", model.Description)
+        }
+    }
+}
+```
+
+### Check Model Context Limits
+
+```go
+response, err := client.Models.List(ctx)
+if err != nil {
+    log.Fatal(err)
+}
+
+// Find models with large context windows (>100k tokens)
+fmt.Println("\nModels with large context windows (>100k tokens):")
+
+for _, model := range response.Data {
+    if model.Capabilities.InputTokenLimit > 100000 {
+        fmt.Printf("  - %s: %d tokens\n", 
+            model.ID, 
+            model.Capabilities.InputTokenLimit)
+    }
+}
+```
+
+### Export Model Information
+
+```go
+import "encoding/json"
+
+response, err := client.Models.List(ctx)
+if err != nil {
+    log.Fatal(err)
+}
+
+// Export to JSON
+jsonData, err := json.MarshalIndent(response.Data, "", "  ")
+if err != nil {
+    log.Fatal(err)
+}
+
+err = os.WriteFile("models.json", jsonData, 0644)
+if err != nil {
+    log.Fatal(err)
+}
+
+fmt.Println("Model information exported to models.json")
+```
+
+## Supported Providers
+
+The API provides models from the following providers:
+
+- **OpenAI** - GPT-4, GPT-3.5, DALL-E, Whisper, TTS
+- **Anthropic** - Claude 3 family (Opus, Sonnet, Haiku)
+- **Google** - Gemini models
+- **xAI** - Grok models
+- **Mistral** - Mistral and Mixtral models
+- **Groq** - High-speed inference models
+- **Fireworks** - Various open-source models
+- **DeepSeek** - DeepSeek models
+
+## Model Capabilities
+
+Models can have the following capabilities:
+
+- **Text**: Text generation and understanding
+- **Vision**: Image understanding and analysis
+- **Audio**: Audio processing (speech, transcription)
+- **Image Generation**: Creating images from text
+- **Tools**: Function and tool calling
+- **Streaming**: Real-time response streaming
+- **Structured Output**: JSON schema compliance
+- **Thinking**: Extended reasoning (o1 models)
+
+## Use Cases
+
+- Discovering available models for your use case
+- Finding models with specific capabilities
+- Comparing token limits across models
+- Listing models by provider
+- Building dynamic model selection UIs
+- Checking model availability before making requests
+
+## Best Practices
+
+1. **Cache Results**: List models periodically and cache the results
+2. **Capability Checking**: Verify model capabilities before use
+3. **Provider Selection**: Choose providers based on your requirements
+4. **Token Limits**: Consider input/output limits for your use case
+5. **Model Updates**: Refresh model list regularly to discover new models

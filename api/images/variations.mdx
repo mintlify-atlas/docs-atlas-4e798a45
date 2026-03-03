@@ -1,0 +1,383 @@
+---
+title: 'Image Variations'
+description: 'Create variations of an existing image'
+api: 'POST /v1/images/variations'
+---
+
+## Overview
+
+Creates variations of an existing image. DALL-E 2 only. Upload an image to generate similar variations with different details.
+
+## Method Signature
+
+```go
+func (r *ImageService) NewVariation(
+    ctx context.Context,
+    body ImageNewVariationParams,
+    opts ...option.RequestOption,
+) (*ImagesResponse, error)
+```
+
+## Request Parameters
+
+<ParamField path="image" type="io.Reader" required>
+  The image to use as the basis for variation(s). Must be:
+  - A valid PNG file
+  - Less than 4MB
+  - Square dimensions
+</ParamField>
+
+<ParamField path="model" type="string" default="openai/dall-e-2">
+  The model to use. Currently only `openai/dall-e-2` supports variations.
+</ParamField>
+
+<ParamField path="n" type="int64" default="1">
+  Number of variations to generate. Must be between 1 and 10.
+</ParamField>
+
+<ParamField path="size" type="string" default="1024x1024">
+  Size of generated variations:
+  - `256x256`
+  - `512x512`
+  - `1024x1024`
+</ParamField>
+
+<ParamField path="response_format" type="string" default="url">
+  Format for returned images:
+  - `url` - Returns URLs (valid for 60 minutes)
+  - `b64_json` - Returns base64-encoded JSON
+</ParamField>
+
+<ParamField path="user" type="string">
+  Unique identifier for end-user for abuse monitoring
+</ParamField>
+
+## Response Fields
+
+<ResponseField name="created" type="int64" required>
+  Unix timestamp when variations were created
+</ResponseField>
+
+<ResponseField name="data" type="[]Image" required>
+  Array of image variations
+  <Expandable title="Image fields">
+    <ResponseField name="url" type="string">
+      URL of the image variation (if response_format=url)
+    </ResponseField>
+    <ResponseField name="b64_json" type="string">
+      Base64-encoded image data (if response_format=b64_json)
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## Code Examples
+
+### Generate Single Variation
+
+```go
+package main
+
+import (
+    "context"
+    "fmt"
+    "log"
+    "os"
+
+    dedalus "github.com/dedalus-labs/dedalus-sdk-go"
+    "github.com/dedalus-labs/dedalus-sdk-go/option"
+)
+
+func main() {
+    client := dedalus.NewClient(
+        option.WithAPIKey("your-api-key"),
+    )
+
+    ctx := context.Background()
+    
+    imageFile, err := os.Open("original.png")
+    if err != nil {
+        log.Fatal(err)
+    }
+    defer imageFile.Close()
+
+    response, err := client.Images.NewVariation(ctx, dedalus.ImageNewVariationParams{
+        Image: dedalus.F[io.Reader](imageFile),
+        Model: dedalus.F("openai/dall-e-2"),
+    })
+
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    fmt.Println("Variation URL:", response.Data[0].URL)
+}
+```
+
+### Generate Multiple Variations
+
+```go
+imageFile, err := os.Open("artwork.png")
+if err != nil {
+    log.Fatal(err)
+}
+defer imageFile.Close()
+
+response, err := client.Images.NewVariation(ctx, dedalus.ImageNewVariationParams{
+    Image: dedalus.F[io.Reader](imageFile),
+    Model: dedalus.F("openai/dall-e-2"),
+    N:     dedalus.F(int64(5)), // Generate 5 variations
+    Size:  dedalus.F("1024x1024"),
+})
+
+if err != nil {
+    log.Fatal(err)
+}
+
+for i, variation := range response.Data {
+    fmt.Printf("Variation %d: %s\n", i+1, variation.URL)
+}
+```
+
+### Different Sizes
+
+```go
+imageFile, err := os.Open("logo.png")
+if err != nil {
+    log.Fatal(err)
+}
+defer imageFile.Close()
+
+response, err := client.Images.NewVariation(ctx, dedalus.ImageNewVariationParams{
+    Image: dedalus.F[io.Reader](imageFile),
+    Model: dedalus.F("openai/dall-e-2"),
+    Size:  dedalus.F("512x512"), // Smaller size
+    N:     dedalus.F(int64(3)),
+})
+
+if err != nil {
+    log.Fatal(err)
+}
+
+for _, variation := range response.Data {
+    fmt.Println("512x512 variation:", variation.URL)
+}
+```
+
+### Download All Variations
+
+```go
+import (
+    "io"
+    "net/http"
+    "path/filepath"
+)
+
+imageFile, err := os.Open("concept.png")
+if err != nil {
+    log.Fatal(err)
+}
+defer imageFile.Close()
+
+response, err := client.Images.NewVariation(ctx, dedalus.ImageNewVariationParams{
+    Image: dedalus.F[io.Reader](imageFile),
+    Model: dedalus.F("openai/dall-e-2"),
+    N:     dedalus.F(int64(4)),
+})
+
+if err != nil {
+    log.Fatal(err)
+}
+
+// Download each variation
+for i, variation := range response.Data {
+    resp, err := http.Get(variation.URL)
+    if err != nil {
+        log.Printf("Error downloading variation %d: %v", i+1, err)
+        continue
+    }
+    defer resp.Body.Close()
+
+    filename := fmt.Sprintf("variation_%d.png", i+1)
+    file, err := os.Create(filename)
+    if err != nil {
+        log.Printf("Error creating file %s: %v", filename, err)
+        continue
+    }
+    defer file.Close()
+
+    _, err = io.Copy(file, resp.Body)
+    if err != nil {
+        log.Printf("Error saving file %s: %v", filename, err)
+        continue
+    }
+
+    fmt.Printf("Saved %s\n", filename)
+}
+```
+
+### Base64 Response Format
+
+```go
+import "encoding/base64"
+
+imageFile, err := os.Open("design.png")
+if err != nil {
+    log.Fatal(err)
+}
+defer imageFile.Close()
+
+response, err := client.Images.NewVariation(ctx, dedalus.ImageNewVariationParams{
+    Image:          dedalus.F[io.Reader](imageFile),
+    Model:          dedalus.F("openai/dall-e-2"),
+    N:              dedalus.F(int64(2)),
+    ResponseFormat: dedalus.F("b64_json"),
+})
+
+if err != nil {
+    log.Fatal(err)
+}
+
+for i, variation := range response.Data {
+    imageData, err := base64.StdEncoding.DecodeString(variation.B64JSON)
+    if err != nil {
+        log.Printf("Error decoding variation %d: %v", i+1, err)
+        continue
+    }
+
+    filename := fmt.Sprintf("variation_%d.png", i+1)
+    err = os.WriteFile(filename, imageData, 0644)
+    if err != nil {
+        log.Printf("Error saving %s: %v", filename, err)
+        continue
+    }
+
+    fmt.Printf("Saved %s\n", filename)
+}
+```
+
+### Batch Processing Multiple Images
+
+```go
+images := []string{"image1.png", "image2.png", "image3.png"}
+
+for _, imagePath := range images {
+    imageFile, err := os.Open(imagePath)
+    if err != nil {
+        log.Printf("Error opening %s: %v", imagePath, err)
+        continue
+    }
+
+    response, err := client.Images.NewVariation(ctx, dedalus.ImageNewVariationParams{
+        Image: dedalus.F[io.Reader](imageFile),
+        Model: dedalus.F("openai/dall-e-2"),
+        N:     dedalus.F(int64(2)),
+    })
+    imageFile.Close()
+
+    if err != nil {
+        log.Printf("Error creating variations for %s: %v", imagePath, err)
+        continue
+    }
+
+    fmt.Printf("\nVariations for %s:\n", imagePath)
+    for i, variation := range response.Data {
+        fmt.Printf("  %d: %s\n", i+1, variation.URL)
+    }
+}
+```
+
+### Save Variations to Specific Directory
+
+```go
+import "path/filepath"
+
+imageFile, err := os.Open("product.png")
+if err != nil {
+    log.Fatal(err)
+}
+defer imageFile.Close()
+
+response, err := client.Images.NewVariation(ctx, dedalus.ImageNewVariationParams{
+    Image: dedalus.F[io.Reader](imageFile),
+    Model: dedalus.F("openai/dall-e-2"),
+    N:     dedalus.F(int64(3)),
+})
+
+if err != nil {
+    log.Fatal(err)
+}
+
+// Create output directory
+outputDir := "variations"
+err = os.MkdirAll(outputDir, 0755)
+if err != nil {
+    log.Fatal(err)
+}
+
+// Download and save
+for i, variation := range response.Data {
+    resp, err := http.Get(variation.URL)
+    if err != nil {
+        continue
+    }
+    defer resp.Body.Close()
+
+    filename := filepath.Join(outputDir, fmt.Sprintf("variation_%d.png", i+1))
+    file, err := os.Create(filename)
+    if err != nil {
+        continue
+    }
+    defer file.Close()
+
+    io.Copy(file, resp.Body)
+    fmt.Printf("Saved %s\n", filename)
+}
+```
+
+## Use Cases
+
+- **Design Exploration**: Generate multiple design options from a single concept
+- **Art Variations**: Create artistic variations of an original piece
+- **Product Mockups**: Generate different product presentation styles
+- **A/B Testing**: Create variations for testing different visual approaches
+- **Creative Inspiration**: Explore different interpretations of an image
+- **Asset Generation**: Create diverse assets from a single base image
+- **Style Transfer**: Generate similar images with subtle style differences
+
+## Image Requirements
+
+- **Format**: PNG only
+- **Size**: Less than 4MB
+- **Dimensions**: Must be square (e.g., 256x256, 512x512, 1024x1024)
+- **Content**: Should not contain transparency (variations ignore alpha channel)
+
+## How Variations Work
+
+The DALL-E 2 variations endpoint:
+1. Analyzes the input image's content, style, and composition
+2. Generates new images that maintain similar themes and elements
+3. Introduces variations in details, colors, composition, and style
+4. Creates unique outputs that are inspired by but different from the original
+
+## Differences from Edits
+
+### Variations
+- No prompt needed
+- Creates similar but different images
+- Maintains overall theme and style
+- Works with complete images only
+
+### Edits
+- Requires a prompt
+- Modifies specific areas (masked regions)
+- Changes only designated parts
+- Requires transparency or mask
+
+## Best Practices
+
+1. **Source Quality**: Use high-quality, clear source images
+2. **Square Images**: Ensure images are square for best results
+3. **Batch Generation**: Generate multiple variations (n=3-5) to get diverse options
+4. **Size Selection**: Use larger sizes (1024x1024) for higher quality
+5. **Content Guidelines**: Follow content policy for source images
+6. **Iteration**: Use variations iteratively - generate variations of your favorite variation

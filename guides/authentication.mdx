@@ -1,0 +1,229 @@
+---
+title: 'Authentication'
+description: 'Set up API keys and configure authentication for the Dedalus Go SDK'
+---
+
+## Overview
+
+The Dedalus Go SDK supports multiple authentication methods using API keys. You can configure authentication using environment variables or by passing options directly to the client.
+
+## Environment Variables
+
+The SDK automatically reads authentication credentials from the following environment variables:
+
+<AccordionGroup>
+  <Accordion title="DEDALUS_API_KEY">
+    Primary API key for authenticating with the Dedalus API. This is passed as a Bearer token in the `Authorization` header.
+  </Accordion>
+  
+  <Accordion title="DEDALUS_X_API_KEY">
+    Alternative API key passed in the `x-api-key` header. Some endpoints may require this in addition to or instead of the primary API key.
+  </Accordion>
+  
+  <Accordion title="DEDALUS_PROVIDER_KEY">
+    Provider-specific API key for Bring Your Own Key (BYOK) scenarios. Passed in the `X-Provider-Key` header.
+  </Accordion>
+  
+  <Accordion title="DEDALUS_ORG_ID">
+    Organization ID for multi-tenant scenarios.
+  </Accordion>
+  
+  <Accordion title="DEDALUS_PROVIDER">
+    Specify a specific provider (e.g., "openai", "anthropic"). Passed in the `X-Provider` header.
+  </Accordion>
+</AccordionGroup>
+
+## Quick Start
+
+<Steps>
+  <Step title="Set Environment Variable">
+    Set your API key as an environment variable:
+    
+    ```bash
+    export DEDALUS_API_KEY="your-api-key-here"
+    ```
+  </Step>
+  
+  <Step title="Initialize Client">
+    Create a client that automatically uses the environment variable:
+    
+    ```go
+    package main
+    
+    import (
+        "github.com/dedalus-labs/dedalus-sdk-go"
+    )
+    
+    func main() {
+        // Automatically reads DEDALUS_API_KEY from environment
+        client := githubcomdedaluslabsdedalussdkgo.NewClient()
+    }
+    ```
+  </Step>
+</Steps>
+
+## Explicit API Key Configuration
+
+You can also provide API keys explicitly when creating the client:
+
+```go
+import (
+    "github.com/dedalus-labs/dedalus-sdk-go"
+    "github.com/dedalus-labs/dedalus-sdk-go/option"
+)
+
+client := githubcomdedaluslabsdedalussdkgo.NewClient(
+    option.WithAPIKey("your-api-key-here"),
+)
+```
+
+<Info>
+  Options passed to `NewClient()` override environment variables.
+</Info>
+
+## Multiple API Keys
+
+For scenarios requiring multiple authentication headers:
+
+```go
+client := githubcomdedaluslabsdedalussdkgo.NewClient(
+    option.WithAPIKey("your-primary-api-key"),
+    option.WithXAPIKey("your-x-api-key"),
+)
+```
+
+## Bring Your Own Key (BYOK)
+
+To use your own provider API keys:
+
+```go
+client := githubcomdedaluslabsdedalussdkgo.NewClient(
+    option.WithAPIKey("your-dedalus-api-key"),
+    option.WithProvider("openai"),
+    option.WithProviderKey("your-openai-api-key"),
+)
+```
+
+## Per-Request Authentication
+
+You can override authentication on a per-request basis:
+
+```go
+chatCompletion, err := client.Chat.Completions.New(
+    context.TODO(),
+    params,
+    option.WithAPIKey("different-api-key"),
+)
+```
+
+## Custom Headers
+
+For custom authentication headers:
+
+```go
+client := githubcomdedaluslabsdedalussdkgo.NewClient(
+    option.WithAPIKey("your-api-key"),
+    option.WithHeader("X-Custom-Auth", "custom-value"),
+)
+```
+
+## Security Best Practices
+
+<Warning>
+  Never hardcode API keys in your source code or commit them to version control.
+</Warning>
+
+<CardGroup cols={2}>
+  <Card title="Use Environment Variables" icon="key">
+    Store API keys in environment variables or secure vaults like AWS Secrets Manager or HashiCorp Vault.
+  </Card>
+  
+  <Card title="Rotate Keys Regularly" icon="rotate">
+    Implement key rotation policies and update your environment variables accordingly.
+  </Card>
+  
+  <Card title="Least Privilege" icon="shield">
+    Use API keys with the minimum required permissions for your use case.
+  </Card>
+  
+  <Card title="Monitor Usage" icon="chart-line">
+    Track API key usage to detect unauthorized access or anomalies.
+  </Card>
+</CardGroup>
+
+## Complete Example
+
+```go
+package main
+
+import (
+    "context"
+    "fmt"
+    "os"
+    
+    "github.com/dedalus-labs/dedalus-sdk-go"
+    "github.com/dedalus-labs/dedalus-sdk-go/option"
+    "github.com/dedalus-labs/dedalus-sdk-go/shared"
+)
+
+func main() {
+    // Read API key from environment
+    apiKey := os.Getenv("DEDALUS_API_KEY")
+    if apiKey == "" {
+        panic("DEDALUS_API_KEY environment variable is required")
+    }
+    
+    // Create authenticated client
+    client := githubcomdedaluslabsdedalussdkgo.NewClient(
+        option.WithAPIKey(apiKey),
+    )
+    
+    // Make an authenticated request
+    chatCompletion, err := client.Chat.Completions.New(
+        context.TODO(),
+        githubcomdedaluslabsdedalussdkgo.ChatCompletionNewParams{
+            Model: githubcomdedaluslabsdedalussdkgo.F[
+                githubcomdedaluslabsdedalussdkgo.ChatCompletionNewParamsModelUnion
+            ](shared.UnionString("openai/gpt-4")),
+            Messages: githubcomdedaluslabsdedalussdkgo.F(
+                []githubcomdedaluslabsdedalussdkgo.ChatCompletionNewParamsMessageUnion{
+                    githubcomdedaluslabsdedalussdkgo.ChatCompletionUserMessageParam{
+                        Role: githubcomdedaluslabsdedalussdkgo.F(
+                            githubcomdedaluslabsdedalussdkgo.ChatCompletionUserMessageParamRoleUser,
+                        ),
+                        Content: githubcomdedaluslabsdedalussdkgo.F[
+                            githubcomdedaluslabsdedalussdkgo.ChatCompletionUserMessageParamContentUnion
+                        ](shared.UnionString("Hello!")),
+                    },
+                },
+            ),
+        },
+    )
+    
+    if err != nil {
+        panic(err.Error())
+    }
+    
+    fmt.Printf("Response: %+v\n", chatCompletion)
+}
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="401 Unauthorized Error">
+    - Verify your API key is correct and active
+    - Ensure the API key is being read from the environment variable
+    - Check that you're using the correct header (`Authorization` vs `x-api-key`)
+  </Accordion>
+  
+  <Accordion title="403 Forbidden Error">
+    - Your API key may not have the required permissions
+    - Contact Dedalus support to verify your account status
+  </Accordion>
+  
+  <Accordion title="Missing API Key">
+    - The SDK returns an error if no API key is provided
+    - Check that `DEDALUS_API_KEY` is set or passed via `option.WithAPIKey()`
+  </Accordion>
+</AccordionGroup>

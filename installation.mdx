@@ -1,0 +1,177 @@
+---
+title: Installation
+description: Install the Dedalus Go SDK and configure your environment
+---
+
+## Requirements
+
+<Info>
+  The Dedalus Go SDK requires **Go 1.22 or higher**.
+</Info>
+
+Before installing the SDK, ensure you have Go installed on your system:
+
+```bash
+go version
+```
+
+If you need to install or upgrade Go, visit the [official Go downloads page](https://go.dev/dl/).
+
+## Install the SDK
+
+<Steps>
+  <Step title="Install the package">
+    Add the Dedalus SDK to your Go project using `go get`:
+
+    <CodeGroup>
+      ```bash Latest Version
+      go get github.com/dedalus-labs/dedalus-sdk-go
+      ```
+
+      ```bash Specific Version
+      go get -u 'github.com/dedalus-labs/dedalus-sdk-go@v0.1.0-alpha.3'
+      ```
+    </CodeGroup>
+
+    <Tip>
+      Pinning to a specific version is recommended for production applications to ensure consistent behavior.
+    </Tip>
+  </Step>
+
+  <Step title="Import the SDK">
+    Import the SDK in your Go code:
+
+    ```go
+    import (
+        "github.com/dedalus-labs/dedalus-sdk-go"
+        "github.com/dedalus-labs/dedalus-sdk-go/option"
+        "github.com/dedalus-labs/dedalus-sdk-go/shared"
+    )
+    ```
+
+    <Note>
+      The package is imported as `githubcomdedaluslabsdedalussdkgo` due to Go's import naming conventions.
+    </Note>
+  </Step>
+
+  <Step title="Set up authentication">
+    Configure your API key using environment variables or client options:
+
+    <Tabs>
+      <Tab title="Environment Variable">
+        Set the `DEDALUS_API_KEY` environment variable:
+
+        ```bash
+        export DEDALUS_API_KEY="your-api-key-here"
+        ```
+
+        The client will automatically read this value:
+
+        ```go
+        client := githubcomdedaluslabsdedalussdkgo.NewClient()
+        ```
+      </Tab>
+
+      <Tab title="Client Option">
+        Pass the API key directly when creating the client:
+
+        ```go
+        client := githubcomdedaluslabsdedalussdkgo.NewClient(
+            option.WithAPIKey("your-api-key-here"),
+        )
+        ```
+      </Tab>
+    </Tabs>
+  </Step>
+</Steps>
+
+## Environment Configuration
+
+The SDK supports multiple environment configurations:
+
+<CodeGroup>
+  ```go Production (Default)
+  client := githubcomdedaluslabsdedalussdkgo.NewClient(
+      option.WithAPIKey("your-api-key"),
+      option.WithEnvironmentProduction(), // This is the default
+  )
+  ```
+
+  ```go Development
+  client := githubcomdedaluslabsdedalussdkgo.NewClient(
+      option.WithAPIKey("your-api-key"),
+      option.WithEnvironmentDevelopment(),
+  )
+  ```
+
+  ```go Custom Base URL
+  client := githubcomdedaluslabsdedalussdkgo.NewClient(
+      option.WithAPIKey("your-api-key"),
+      option.WithBaseURL("https://custom.api.endpoint"),
+  )
+  ```
+</CodeGroup>
+
+## Available Environment Variables
+
+The SDK reads configuration from the following environment variables:
+
+| Variable | Description | Default |
+|----------|-------------|----------|
+| `DEDALUS_API_KEY` | Your Dedalus API key | Required |
+| `DEDALUS_X_API_KEY` | Additional API key for certain operations | Optional |
+| `DEDALUS_PROVIDER_KEY` | Provider-specific API key for BYOK | Optional |
+| `DEDALUS_BASE_URL` | Custom API base URL | Production URL |
+| `DEDALUS_AS_URL` | Custom AS URL for specific operations | Optional |
+| `DEDALUS_ORG_ID` | Organization ID for multi-org setups | Optional |
+| `DEDALUS_PROVIDER` | Default provider to use | Optional |
+| `DEDALUS_PROVIDER_MODEL` | Default provider model | Optional |
+
+## Verify Installation
+
+Create a simple test file to verify your installation:
+
+```go test.go
+package main
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/dedalus-labs/dedalus-sdk-go"
+	"github.com/dedalus-labs/dedalus-sdk-go/option"
+)
+
+func main() {
+	client := githubcomdedaluslabsdedalussdkgo.NewClient(
+		option.WithAPIKey("your-api-key"),
+	)
+
+	models, err := client.Models.List(context.TODO())
+	if err != nil {
+		panic(err.Error())
+	}
+
+	fmt.Println("Available models:", len(models.Data))
+}
+```
+
+Run the test:
+
+```bash
+go run test.go
+```
+
+<Check>
+  If you see output listing available models, your installation is successful!
+</Check>
+
+## Next Steps
+
+<Card
+  title="Quickstart Guide"
+  icon="rocket"
+  href="/quickstart"
+>
+  Learn how to make your first API call with a complete chat completion example
+</Card>

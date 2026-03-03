@@ -1,0 +1,342 @@
+---
+title: Error Handling
+description: Learn how to handle API errors, use the errors.As pattern, and access request/response details for debugging
+---
+
+## Overview
+
+The Dedalus Go SDK provides structured error handling through the `*githubcomdedaluslabsdedalussdkgo.Error` type. This error type captures the complete context of failed requests, including status codes, raw HTTP request/response data, and JSON error details.
+
+## Error Types
+
+### API Errors
+
+When the API returns a non-success status code (4xx or 5xx), the SDK returns an error with type `*githubcomdedaluslabsdedalussdkgo.Error`:
+
+```go
+type Error struct {
+    JSON       errorJSON
+    StatusCode int
+    Request    *http.Request
+    Response   *http.Response
+}
+```
+
+This error type contains:
+- `StatusCode` - HTTP status code (404, 500, etc.)
+- `Request` - The complete `*http.Request` that was sent
+- `Response` - The complete `*http.Response` received
+- `JSON` - Parsed error body with additional metadata
+
+### Other Errors
+
+Non-API errors are returned unwrapped:
+- Network failures: `*url.Error` wrapping `*net.OpError`
+- Context timeouts: `context.DeadlineExceeded`
+- Serialization errors: `*json.SyntaxError`, etc.
+
+<Info>
+Only errors originating from the API (HTTP responses with error status codes) are wrapped in `*githubcomdedaluslabsdedalussdkgo.Error`. All other errors pass through unchanged.
+</Info>
+
+## Using errors.As Pattern
+
+The recommended way to handle API errors is with Go's `errors.As` function:
+
+```go
+_, err := client.Chat.Completions.New(context.TODO(), githubcomdedaluslabsdedalussdkgo.ChatCompletionNewParams{
+    Model: githubcomdedaluslabsdedalussdkgo.F[githubcomdedaluslabsdedalussdkgo.ChatCompletionNewParamsModelUnion](
+        shared.UnionString("openai/gpt-5-nano"),
+    ),
+    Messages: githubcomdedaluslabsdedalussdkgo.F([]githubcomdedaluslabsdedalussdkgo.ChatCompletionNewParamsMessageUnion{
+        githubcomdedaluslabsdedalussdkgo.ChatCompletionSystemMessageParam{
+            Role:    githubcomdedaluslabsdedalussdkgo.F(githubcomdedaluslabsdedalussdkgo.ChatCompletionSystemMessageParamRoleSystem),
+            Content: githubcomdedaluslabsdedalussdkgo.F[githubcomdedaluslabsdedalussdkgo.ChatCompletionSystemMessageParamContentUnion](
+                shared.UnionString("You are Stephen Dedalus. Respond in morose Joycean malaise."),
+            ),
+        },
+        githubcomdedaluslabsdedalussdkgo.ChatCompletionUserMessageParam{
+            Role:    githubcomdedaluslabsdedalussdkgo.F(githubcomdedaluslabsdedalussdkgo.ChatCompletionUserMessageParamRoleUser),
+            Content: githubcomdedaluslabsdedalussdkgo.F[githubcomdedaluslabsdedalussdkgo.ChatCompletionUserMessageParamContentUnion](
+                shared.UnionString("Hello, how are you today?"),
+            ),
+        },
+    }),
+})
+if err != nil {
+    var apierr *githubcomdedaluslabsdedalussdkgo.Error
+    if errors.As(err, &apierr) {
+        println(string(apierr.DumpRequest(true)))  // Prints the serialized HTTP request
+        println(string(apierr.DumpResponse(true))) // Prints the serialized HTTP response
+    }
+    panic(err.Error()) // GET "/v1/chat/completions": 400 Bad Request { ... }
+}
+```
+
+<Note>
+`errors.As` safely type-asserts the error, allowing you to access API-specific error details without panicking on non-API errors.
+</Note>
+
+## Accessing Error Details
+
+### Status Code
+
+Check the HTTP status code to determine the error type:
+
+```go
+var apierr *githubcomdedaluslabsdedalussdkgo.Error
+if errors.As(err, &apierr) {
+    switch apierr.StatusCode {
+    case 400:
+        fmt.Println("Bad request - check your parameters")
+    case 401:
+        fmt.Println("Unauthorized - check your API key")
+    case 404:
+        fmt.Println("Resource not found")
+    case 429:
+        fmt.Println("Rate limited - slow down requests")
+    case 500, 502, 503:
+        fmt.Println("Server error - retry the request")
+    default:
+        fmt.Printf("Unexpected error: %d\n", apierr.StatusCode)
+    }
+}
+```
+
+### Request Details
+
+Access the original request that failed:
+
+```go
+var apierr *githubcomdedaluslabsdedalussdkgo.Error
+if errors.As(err, &apierr) {
+    fmt.Printf("Failed request: %s %s\n", apierr.Request.Method, apierr.Request.URL)
+    fmt.Printf("Headers: %+v\n", apierr.Request.Header)
+}
+```
+
+### Response Details
+
+Access the error response from the API:
+
+```go
+var apierr *githubcomdedaluslabsdedalussdkgo.Error
+if errors.As(err, &apierr) {
+    fmt.Printf("Status: %s\n", apierr.Response.Status)
+    fmt.Printf("Headers: %+v\n", apierr.Response.Header)
+}
+```
+
+### JSON Error Body
+
+The error's JSON field contains the parsed error response:
+
+```go
+var apierr *githubcomdedaluslabsdedalussdkgo.Error
+if errors.As(err, &apierr) {
+    // Get the raw JSON error body
+    rawJSON := apierr.JSON.RawJSON()
+    fmt.Printf("Error body: %s\n", rawJSON)
+
+    // Access extra fields in the error response
+    if errorCode, ok := apierr.JSON.ExtraFields["error_code"]; ok {
+        fmt.Printf("Error code: %s\n", errorCode.Raw())
+    }
+}
+```
+
+## Debugging with DumpRequest and DumpResponse
+
+The error type provides convenient methods to dump the full HTTP request and response:
+
+```go
+var apierr *githubcomdedaluslabsdedalussdkgo.Error
+if errors.As(err, &apierr) {
+    // Dump the complete HTTP request
+    fmt.Println("Request:")
+    fmt.Println(string(apierr.DumpRequest(true)))  // true includes body
+
+    // Dump the complete HTTP response
+    fmt.Println("Response:")
+    fmt.Println(string(apierr.DumpResponse(true))) // true includes body
+}
+```
+
+Example output:
+```
+Request:
+POST /v1/chat/completions HTTP/1.1
+Host: api.dedaluslabs.ai
+Content-Type: application/json
+X-Dedalus-Api-Key: [REDACTED]
+
+{"model":"openai/gpt-5-nano","messages":[...]}
+
+Response:
+HTTP/1.1 400 Bad Request
+Content-Type: application/json
+
+{"error":{"message":"Invalid model specified","type":"invalid_request_error"}}
+```
+
+<Warning>
+The dumped request may contain sensitive information like API keys. Be careful when logging or sharing this output.
+</Warning>
+
+## Error Message Format
+
+The `Error()` method returns a formatted string with context:
+
+```go
+fmt.Println(err.Error())
+// Output: GET "/v1/chat/completions": 400 Bad Request { ... }
+```
+
+Format: `{METHOD} "{PATH}": {STATUS_CODE} {STATUS_TEXT} {JSON_BODY}`
+
+## Common Error Handling Patterns
+
+### Pattern 1: Retry on Rate Limit
+
+```go
+import "time"
+
+func callWithRetry(ctx context.Context, client *githubcomdedaluslabsdedalussdkgo.Client, params githubcomdedaluslabsdedalussdkgo.ChatCompletionNewParams) (*githubcomdedaluslabsdedalussdkgo.ChatCompletion, error) {
+    maxRetries := 3
+    for i := 0; i < maxRetries; i++ {
+        result, err := client.Chat.Completions.New(ctx, params)
+        if err == nil {
+            return result, nil
+        }
+
+        var apierr *githubcomdedaluslabsdedalussdkgo.Error
+        if errors.As(err, &apierr) && apierr.StatusCode == 429 {
+            // Rate limited - wait and retry
+            waitTime := time.Second * time.Duration(math.Pow(2, float64(i)))
+            fmt.Printf("Rate limited, waiting %v before retry %d/%d\n", waitTime, i+1, maxRetries)
+            time.Sleep(waitTime)
+            continue
+        }
+
+        // Non-retryable error
+        return nil, err
+    }
+    return nil, fmt.Errorf("max retries exceeded")
+}
+```
+
+<Info>
+The SDK automatically retries 429 errors by default. This pattern is useful if you want custom retry logic.
+</Info>
+
+### Pattern 2: Distinguish Error Types
+
+```go
+result, err := client.Chat.Completions.New(ctx, params)
+if err != nil {
+    var apierr *githubcomdedaluslabsdedalussdkgo.Error
+    if errors.As(err, &apierr) {
+        // API error - check status code
+        if apierr.StatusCode >= 500 {
+            return fmt.Errorf("server error: %w", err)
+        }
+        return fmt.Errorf("client error: %w", err)
+    }
+
+    // Network or other error
+    if errors.Is(err, context.DeadlineExceeded) {
+        return fmt.Errorf("request timeout: %w", err)
+    }
+
+    return fmt.Errorf("unexpected error: %w", err)
+}
+```
+
+### Pattern 3: Extract Structured Error Info
+
+```go
+type ErrorResponse struct {
+    Error struct {
+        Message string `json:"message"`
+        Type    string `json:"type"`
+        Code    string `json:"code"`
+    } `json:"error"`
+}
+
+var apierr *githubcomdedaluslabsdedalussdkgo.Error
+if errors.As(err, &apierr) {
+    var errResp ErrorResponse
+    if err := json.Unmarshal([]byte(apierr.JSON.RawJSON()), &errResp); err == nil {
+        fmt.Printf("Error: %s (type: %s, code: %s)\n",
+            errResp.Error.Message,
+            errResp.Error.Type,
+            errResp.Error.Code)
+    }
+}
+```
+
+## Best Practices
+
+<Steps>
+  <Step title="Always check for errors">
+    Never ignore errors from SDK methods:
+    
+    ```go
+    // ❌ Bad - ignoring error
+    result, _ := client.Chat.Completions.New(ctx, params)
+    
+    // ✅ Good - handling error
+    result, err := client.Chat.Completions.New(ctx, params)
+    if err != nil {
+        return fmt.Errorf("failed to create completion: %w", err)
+    }
+    ```
+  </Step>
+
+  <Step title="Use errors.As for API errors">
+    Type-assert safely with `errors.As` instead of direct type assertion:
+    
+    ```go
+    // ❌ Bad - can panic
+    apierr := err.(*githubcomdedaluslabsdedalussdkgo.Error)
+    
+    // ✅ Good - safe type assertion
+    var apierr *githubcomdedaluslabsdedalussdkgo.Error
+    if errors.As(err, &apierr) {
+        // handle API error
+    }
+    ```
+  </Step>
+
+  <Step title="Log debugging info carefully">
+    Use `DumpRequest` and `DumpResponse` for debugging, but be mindful of sensitive data:
+    
+    ```go
+    var apierr *githubcomdedaluslabsdedalussdkgo.Error
+    if errors.As(err, &apierr) {
+        // ❌ Bad - may expose API keys in logs
+        log.Printf("Request: %s", apierr.DumpRequest(true))
+        
+        // ✅ Good - redact sensitive info or log to secure location
+        if debugMode {
+            debugLog.Printf("Request: %s", apierr.DumpRequest(true))
+        }
+    }
+    ```
+  </Step>
+
+  <Step title="Wrap errors with context">
+    Add context to errors before returning:
+    
+    ```go
+    result, err := client.Chat.Completions.New(ctx, params)
+    if err != nil {
+        return fmt.Errorf("failed to create chat completion for model %s: %w", modelName, err)
+    }
+    ```
+  </Step>
+</Steps>
+
+<Tip>
+The SDK automatically retries certain errors (connection failures, 408, 409, 429, 500+). Configure retry behavior with `option.WithMaxRetries()`.
+</Tip>

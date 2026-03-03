@@ -1,0 +1,333 @@
+---
+title: 'Audio Translations'
+description: 'Translate audio files to English text'
+api: 'POST /v1/audio/translations'
+---
+
+## Overview
+
+Translates audio files in any supported language to English text using OpenAI's Whisper model. Supports the same audio formats as transcription. Maximum file size is 25 MB.
+
+## Method Signature
+
+```go
+func (r *AudioTranslationService) New(
+    ctx context.Context,
+    body AudioTranslationNewParams,
+    opts ...option.RequestOption,
+) (*AudioTranslationNewResponse, error)
+```
+
+## Request Parameters
+
+<ParamField path="file" type="io.Reader" required>
+  Audio file to translate. Supported formats:
+  - mp3
+  - mp4
+  - mpeg
+  - mpga
+  - m4a
+  - wav
+  - webm
+  
+  Maximum file size: 25 MB
+</ParamField>
+
+<ParamField path="model" type="string" required>
+  Model ID to use for translation. Example: `openai/whisper-1`
+</ParamField>
+
+<ParamField path="prompt" type="string">
+  Optional text to guide the model's style. The prompt should be in English.
+</ParamField>
+
+<ParamField path="response_format" type="string" default="json">
+  Format of the translation output:
+  - `json` - JSON object with text
+  - `text` - Plain text
+  - `srt` - SubRip subtitle format
+  - `verbose_json` - JSON with timestamps and metadata
+  - `vtt` - WebVTT subtitle format
+</ParamField>
+
+<ParamField path="temperature" type="float64" default="0">
+  Sampling temperature between 0 and 1. Higher values make output more random, lower values more focused and deterministic.
+</ParamField>
+
+## Response Fields
+
+<ResponseField name="text" type="string" required>
+  The English translation of the audio
+</ResponseField>
+
+<ResponseField name="language" type="string">
+  Always `english` for translation responses (verbose_json only)
+</ResponseField>
+
+<ResponseField name="duration" type="float64">
+  Duration of the input audio in seconds (verbose_json only)
+</ResponseField>
+
+<ResponseField name="segments" type="[]TranscriptionSegment">
+  Array of translation segments with timestamps (verbose_json only)
+  <Expandable title="Segment fields">
+    <ResponseField name="id" type="int64">
+      Unique segment identifier
+    </ResponseField>
+    <ResponseField name="text" type="string">
+      Translated text content of the segment
+    </ResponseField>
+    <ResponseField name="start" type="float64">
+      Start time in seconds
+    </ResponseField>
+    <ResponseField name="end" type="float64">
+      End time in seconds
+    </ResponseField>
+    <ResponseField name="tokens" type="[]int64">
+      Token IDs for the segment text
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## Code Examples
+
+### Basic Translation
+
+```go
+package main
+
+import (
+    "context"
+    "fmt"
+    "log"
+    "os"
+
+    dedalus "github.com/dedalus-labs/dedalus-sdk-go"
+    "github.com/dedalus-labs/dedalus-sdk-go/option"
+)
+
+func main() {
+    client := dedalus.NewClient(
+        option.WithAPIKey("your-api-key"),
+    )
+
+    ctx := context.Background()
+    
+    // Open a non-English audio file
+    audioFile, err := os.Open("spanish_audio.mp3")
+    if err != nil {
+        log.Fatal(err)
+    }
+    defer audioFile.Close()
+
+    translation, err := client.Audio.Translations.New(ctx, dedalus.AudioTranslationNewParams{
+        File:  dedalus.F[io.Reader](audioFile),
+        Model: dedalus.F("openai/whisper-1"),
+    })
+
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    fmt.Println("English Translation:", translation.Text)
+}
+```
+
+### Verbose JSON with Timestamps
+
+```go
+audioFile, err := os.Open("french_podcast.mp3")
+if err != nil {
+    log.Fatal(err)
+}
+defer audioFile.Close()
+
+translation, err := client.Audio.Translations.New(ctx, dedalus.AudioTranslationNewParams{
+    File:           dedalus.F[io.Reader](audioFile),
+    Model:          dedalus.F("openai/whisper-1"),
+    ResponseFormat: dedalus.F("verbose_json"),
+})
+
+if err != nil {
+    log.Fatal(err)
+}
+
+fmt.Printf("Duration: %.2f seconds\n", translation.Duration)
+fmt.Printf("Translation: %s\n", translation.Text)
+
+// Access segments for timestamps
+if segments, ok := translation.Segments.([]dedalus.AudioTranslationNewResponseCreateTranslationResponseVerboseJSONSegment); ok {
+    for _, segment := range segments {
+        fmt.Printf("[%.2f - %.2f] %s\n", segment.Start, segment.End, segment.Text)
+    }
+}
+```
+
+### Generate English Subtitles from Foreign Audio
+
+```go
+audioFile, err := os.Open("german_video.mp3")
+if err != nil {
+    log.Fatal(err)
+}
+defer audioFile.Close()
+
+translation, err := client.Audio.Translations.New(ctx, dedalus.AudioTranslationNewParams{
+    File:           dedalus.F[io.Reader](audioFile),
+    Model:          dedalus.F("openai/whisper-1"),
+    ResponseFormat: dedalus.F("srt"),
+})
+
+if err != nil {
+    log.Fatal(err)
+}
+
+// Save English subtitles
+err = os.WriteFile("english_subtitles.srt", []byte(translation.Text), 0644)
+if err != nil {
+    log.Fatal(err)
+}
+
+fmt.Println("English subtitles saved to english_subtitles.srt")
+```
+
+### With Prompt for Style
+
+```go
+audioFile, err := os.Open("italian_lecture.mp3")
+if err != nil {
+    log.Fatal(err)
+}
+defer audioFile.Close()
+
+translation, err := client.Audio.Translations.New(ctx, dedalus.AudioTranslationNewParams{
+    File:   dedalus.F[io.Reader](audioFile),
+    Model:  dedalus.F("openai/whisper-1"),
+    Prompt: dedalus.F("This is an academic lecture about Renaissance art history."),
+})
+
+if err != nil {
+    log.Fatal(err)
+}
+
+fmt.Println(translation.Text)
+```
+
+### Batch Translation
+
+```go
+files := map[string]string{
+    "spanish_intro.mp3":  "Spanish",
+    "french_outro.mp3":   "French",
+    "german_chapter1.mp3": "German",
+}
+
+for filename, language := range files {
+    audioFile, err := os.Open(filename)
+    if err != nil {
+        log.Printf("Error opening %s: %v", filename, err)
+        continue
+    }
+
+    translation, err := client.Audio.Translations.New(ctx, dedalus.AudioTranslationNewParams{
+        File:  dedalus.F[io.Reader](audioFile),
+        Model: dedalus.F("openai/whisper-1"),
+    })
+    audioFile.Close()
+
+    if err != nil {
+        log.Printf("Error translating %s: %v", filename, err)
+        continue
+    }
+
+    fmt.Printf("\n%s (%s):\n%s\n", filename, language, translation.Text)
+}
+```
+
+### VTT Format for Web
+
+```go
+audioFile, err := os.Open("japanese_tutorial.mp3")
+if err != nil {
+    log.Fatal(err)
+}
+defer audioFile.Close()
+
+translation, err := client.Audio.Translations.New(ctx, dedalus.AudioTranslationNewParams{
+    File:           dedalus.F[io.Reader](audioFile),
+    Model:          dedalus.F("openai/whisper-1"),
+    ResponseFormat: dedalus.F("vtt"),
+})
+
+if err != nil {
+    log.Fatal(err)
+}
+
+// Use in HTML5 video player
+err = os.WriteFile("english_captions.vtt", []byte(translation.Text), 0644)
+if err != nil {
+    log.Fatal(err)
+}
+```
+
+## Differences from Transcription
+
+### Translation
+- Always outputs **English** text
+- Input can be in **any supported language**
+- Translates content while transcribing
+- No `language` parameter (input language is auto-detected)
+
+### Transcription
+- Outputs text in the **same language** as input
+- Optionally accepts `language` parameter for better accuracy
+- Only transcribes, doesn't translate
+
+## Supported Input Languages
+
+Whisper can translate from 99 languages to English, including:
+- Spanish
+- French
+- German
+- Italian
+- Portuguese
+- Russian
+- Chinese
+- Japanese
+- Korean
+- Arabic
+- Hindi
+- And 89 more languages...
+
+## Response Formats
+
+### JSON Format
+Simple JSON object with the translated English text.
+
+### Verbose JSON Format
+Includes duration, segments with timestamps, and metadata.
+
+### SRT Format
+SubRip subtitle format with numbered segments and timestamps in English.
+
+### VTT Format
+WebVTT subtitle format for HTML5 video players in English.
+
+### Text Format
+Plain English text with no metadata.
+
+## Best Practices
+
+1. **File Size**: Keep audio files under 25 MB. Split larger files into chunks.
+2. **Audio Quality**: Better audio quality produces more accurate translations.
+3. **Context Prompt**: Use English prompts to guide translation style and terminology.
+4. **Format Selection**: Use `verbose_json` when you need timestamps for subtitles.
+5. **Use Cases**: Perfect for creating English subtitles, translating foreign podcasts, or international customer support.
+
+## Common Use Cases
+
+- Creating English subtitles for foreign language videos
+- Translating international customer support calls
+- Converting multilingual podcasts to English
+- Translating foreign language lectures and presentations
+- Building multilingual accessibility features
