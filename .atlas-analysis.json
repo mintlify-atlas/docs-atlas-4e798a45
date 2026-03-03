@@ -1,0 +1,119 @@
+{
+  "projectType": "sdk-library",
+  "projectName": "Dedalus Go SDK",
+  "projectDescription": "Official Go SDK for the Dedalus API providing AI capabilities including chat completions, embeddings, audio, and image generation",
+  "theme": "aspen",
+  "primaryColor": "#4F46E5",
+  "lightColor": "#818CF8",
+  "darkColor": "#312E81",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/client-configuration",
+              "concepts/request-fields",
+              "concepts/response-objects",
+              "concepts/error-handling"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/authentication",
+              "guides/environments",
+              "guides/timeouts-retries",
+              "guides/file-uploads",
+              "guides/pagination",
+              "guides/middleware",
+              "guides/streaming"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "api/overview"
+            ]
+          },
+          {
+            "group": "Chat",
+            "pages": [
+              "api/chat/completions"
+            ]
+          },
+          {
+            "group": "Embeddings",
+            "pages": [
+              "api/embeddings/create"
+            ]
+          },
+          {
+            "group": "Audio",
+            "pages": [
+              "api/audio/speech",
+              "api/audio/transcriptions",
+              "api/audio/translations"
+            ]
+          },
+          {
+            "group": "Images",
+            "pages": [
+              "api/images/generate",
+              "api/images/edit",
+              "api/images/variations"
+            ]
+          },
+          {
+            "group": "Models",
+            "pages": [
+              "api/models/list",
+              "api/models/get"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Chat completions with streaming support",
+    "Text embeddings generation",
+    "Audio speech synthesis, transcription, and translation",
+    "Image generation, editing, and variations",
+    "Model listing and retrieval",
+    "Type-safe request parameters using generic Field types",
+    "Automatic retry with exponential backoff",
+    "Middleware support for custom request/response handling",
+    "Multiple environment support (production/development)",
+    "File upload handling for audio and images"
+  ],
+  "publicApiSurface": [
+    "NewClient",
+    "Client.Chat.Completions.New",
+    "Client.Chat.Completions.NewStreaming",
+    "Client.Embeddings.New",
+    "Client.Audio.Speech.New",
+    "Client.Audio.Transcriptions.New",
+    "Client.Audio.Translations.New",
+    "Client.Images.Generate",
+    "Client.Images.Edit",
+    "Client.Images.NewVariation",
+    "Client.Models.List",
+    "Client.Models.Get"
+  ]
+}
